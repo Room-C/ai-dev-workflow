@@ -9,7 +9,7 @@
     {
       "name": "ai-dev-workflow",
       "description": "Structured AI-assisted development workflow: feature pipeline, quality gates, and Flutter design-to-code. 20 skills, 6 agents.",
-      "version": "1.1.2",
+      "version": "1.1.3",
       "author": {
         "name": "Room C Studio",
         "url": "https://github.com/Room-C"
