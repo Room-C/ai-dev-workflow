@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.0 — 2026-04-13
+
+### Changed
+- **rc:capture-mockups**: 支持三种采集模式 — Mode A（Codegen 录制脚本回放，推荐）、Mode B（AI 自动探索，需 opt-in）、Mode C（引导用户 Codegen 录制）。新增步骤 P（脚本后处理：自动在录制脚本中插入截图命令）。截图按 `screens/`、`interactions/`、`states/` 分类存储。新增 `module` 参数支持按模块隔离脚本和截图（如 `scripts/capture-home.mjs` + `mockups/home/`）。新增 `mode=record` 参数强制触发重新录制。
+- **rc:sync-design**: 区分两种设计稿更新场景 — UI 内容变但交互流程不变（直接重跑脚本）vs 交互流程也变了（`--flow-changed`，触发重新录制）。新增 `module` 参数支持按模块同步。
+
 ## 1.0.0 — 2026-04-10
 
 ### Added

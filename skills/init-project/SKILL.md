@@ -46,10 +46,15 @@ init-project → capture-mockups → extract-tokens → connect-app → implemen
 
 ```
 project/
+├── scripts/
+│   └── capture-mockups.mjs   # Codegen 录制脚本（rc:capture-mockups 生成/管理）
 ├── docs/
 │   └── design/
 │       ├── mockups/          # 设计稿截图（rc:capture-mockups 输出）
-│       │   └── index.md      # 截图索引
+│       │   ├── screens/      #   页面默认态截图
+│       │   ├── interactions/ #   交互状态截图（展开/折叠/弹窗/Tab 切换）
+│       │   ├── states/       #   数据状态截图（空/加载/错误）
+│       │   └── index.md      #   截图索引
 │       ├── tokens.md         # Design Tokens 参考文档
 │       ├── alignment/        # 对齐报告（rc:check-alignment 输出）
 │       └── critique/         # 评审报告（rc:design-critique 输出）
@@ -96,6 +101,18 @@ project:
   name: <应用名称>
   path: <项目路径>
 
+capture:
+  script: scripts/capture-mockups.mjs   # 整体项目的 Codegen 录制脚本路径
+  mode: auto                            # auto | script | explore | record
+  modules: {}                           # 按模块管理时自动填充，如:
+  # modules:
+  #   home:
+  #     script: scripts/capture-home.mjs
+  #     last_captured: 2026-04-13T10:00:00Z
+  #   chat:
+  #     script: scripts/capture-chat.mjs
+  #     last_captured: 2026-04-13T10:05:00Z
+
 pipeline:
   capture_dir: docs/design/mockups
   tokens_dart: lib/design/tokens.dart
@@ -108,7 +125,10 @@ pipeline:
 ### 步骤 7：首次截取设计稿
 
 - 调用 `rc:capture-mockups` 截取设计稿全部页面
-- 确认截图已保存到 `docs/design/mockups/`
+- `rc:capture-mockups` 会自动判断采集模式：
+  - 设计稿简单（≤ 5 页，DOM 语义清晰）→ AI 自动探索
+  - 设计稿复杂 → 引导用户使用 Playwright Codegen 录制交互路径，生成 `scripts/capture-mockups.mjs`
+- 确认截图已保存到 `docs/design/mockups/screens/`、`interactions/`、`states/`
 - 验证索引文件已生成
 
 ### 步骤 8：输出初始化报告

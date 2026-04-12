@@ -99,7 +99,7 @@ rc:init-project → rc:capture-mockups → rc:extract-tokens → rc:connect-app
 | Skill | Description |
 |-------|-------------|
 | `rc:init-project` | 初始化 Flutter D2C 项目结构 |
-| `rc:capture-mockups` | Playwright 截取设计稿页面 |
+| `rc:capture-mockups` | 设计稿截图采集（按模块管理，Codegen 录制回放 / AI 探索） |
 | `rc:extract-tokens` | 提取 Design Tokens → Dart 代码 |
 | `rc:connect-app` | 启动 Flutter 应用 + 连接 MCP 调试 |
 | `rc:implement-screen` | TDD 驱动页面实现 |
@@ -107,7 +107,7 @@ rc:init-project → rc:capture-mockups → rc:extract-tokens → rc:connect-app
 | `rc:design-critique` | 设计质量评审（反模式 + 原则合规） |
 | `rc:verify-interaction` | 三层交互验证 |
 | `rc:run-golden` | Golden Test 回归检测 |
-| `rc:sync-design` | 设计稿更新后全链路同步 |
+| `rc:sync-design` | 设计稿更新后全链路同步（区分 UI 变更 vs 交互流程变更） |
 
 ## Agents
 

@@ -18,17 +18,43 @@ init-project → capture-mockups → extract-tokens → connect-app → implemen
 
 | 参数 | 必填 | 说明 |
 |------|------|------|
+| `module` | 否 | 模块名称。指定后只同步该模块的设计稿和代码。不指定则同步全部模块 |
 | `scope` | 否 | 同步范围：`all`（全部页面，默认）/ `<screen-name>`（指定页面） |
+| `flow-changed` | 否 | 如果为 `true`，表示交互流程有变（新增/删除页面、交互路径变化），需要重新录制采集脚本。默认 `false`（仅 UI 内容变化） |
 | `dry-run` | 否 | 如果为 `true`，只分析不修改代码（默认 `false`） |
 | `auto-approve` | 否 | 如果为 `true`，跳过人工确认直接更新（默认 `false`，建议保持 false） |
 
 ## 工作流程
 
-### 步骤 1：重新截取设计稿
+### 步骤 1：判断变更类型并重新截取
 
-- 调用 `rc:capture-mockups` 重新截取设计稿全部页面（或指定页面）
-- 新截图保存为当前版本
-- 旧截图已被 `rc:capture-mockups` 保留为 `.prev.png`
+> 如果指定了 `module`，以下所有操作都限定在该模块范围内。
+> 脚本路径：`scripts/capture-<module>.mjs`（无 module 时为 `scripts/capture-mockups.mjs`）。
+
+设计稿更新分为两种情况，采集策略不同：
+
+#### 情况 A：UI 内容变但交互流程不变
+
+> 例如：颜色修改、字号调整、间距变化、文案替换、图标更换——页面和交互路径没有增减。
+
+- 检测条件：对应的录制脚本存在，且 `flow-changed` 未指定
+- 操作：调用 `rc:capture-mockups <module>`（自动走 Mode A 脚本回放），重跑现有脚本即可
+- 新截图覆盖当前版本，旧截图保留为 `.prev.png`
+
+#### 情况 B：交互流程也变了
+
+> 例如：新增页面、删除页面、按钮位置移动导致点击路径变化、新增弹窗/Tab/抽屉等交互状态。
+
+- 检测条件：以下任一成立
+  - 用户指定了 `flow-changed` 参数
+  - 用户明确告知交互流程有变
+  - 脚本回放失败（元素找不到、点击超时、导航异常）
+- 操作：调用 `rc:capture-mockups <module> --mode record`，触发重新录制流程
+
+#### 情况 C：无录制脚本
+
+- 检测条件：对应的录制脚本不存在
+- 操作：调用 `rc:capture-mockups <module>`（自动走 Mode C 引导录制）
 
 ### 步骤 2：对比新旧截图
 
@@ -38,8 +64,8 @@ init-project → capture-mockups → extract-tokens → connect-app → implemen
 - 无变化：新旧截图完全一致（像素级对比）
 - 微调：小范围变化（间距、颜色微调）
 - 重构：大范围变化（布局调整、组件重新设计）
-- 新增：设计稿中出现了新页面
-- 删除：设计稿中移除了页面
+- 新增：设计稿中出现了新页面（仅情况 B 可能出现）
+- 删除：设计稿中移除了页面（仅情况 B 可能出现）
 
 **生成变更摘要：**
 
@@ -52,6 +78,8 @@ init-project → capture-mockups → extract-tokens → connect-app → implemen
 | profile | 重构 | 整体布局从列表改为卡片网格 | 高 |
 | settings | 无变化 | — | — |
 | onboarding | 新增 | 新增引导页 | 中（需全新实现） |
+
+> 采集方式: 脚本回放 / 重新录制
 ```
 
 ### 步骤 3：评估代码影响范围
