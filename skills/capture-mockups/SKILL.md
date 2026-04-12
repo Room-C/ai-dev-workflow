@@ -237,43 +237,56 @@ node scripts/capture-<module>.mjs
 > 适用场景：首次采集、重新录制、或设计稿交互流程变更后。
 > 核心原则：人工录制一次确定路径，比每次让 AI 猜测可靠得多。
 
-### C1. 读取设计稿 URL
+### C1. 准备录制环境
 
 - 使用步骤 -1.5 已确定的设计稿 URL
 - 如果步骤 -1.5 未执行（用户直接指定了 `module` + `url`），从参数或 `.design-to-code.yaml` 读取
 - 从配置中读取 viewport 设置（参数 > 配置文件 > 默认值 393x852）
+- 确认 Playwright 已安装（`npx playwright --version`，如未安装则 `npx playwright install chromium`）
+- 确保脚本目录存在（`mkdir -p scripts`）
+- 如果是重新录制（`mode=record` + 脚本已存在），先将旧脚本备份为 `<script>.bak`
 
-### C2. 引导用户启动 Codegen
+### C2. 启动 Codegen 并引导用户
 
-使用 AskUserQuestion 告知用户：
+**自动启动 Codegen**（使用 Bash `run_in_background: true`）：
+
+```bash
+npx playwright codegen \
+  --target javascript \
+  --output scripts/capture-<module>.mjs \
+  --viewport-size=<width>,<height> \
+  <design-url>
+```
+
+> 关键参数说明：
+> - `--target javascript`：生成独立可运行的 JS 脚本（含 `chromium.launch()`），而非默认的 `playwright-test` 格式
+> - `--output`：用户关闭浏览器后自动保存脚本到文件，无需手动复制粘贴
+
+命令启动后，使用 AskUserQuestion 告知用户（此时浏览器已自动打开）：
 
 ```
-请使用 Playwright Codegen 录制设计稿的交互路径。
+📸 Codegen 浏览器已打开，请在浏览器中操作设计稿：
 
-在终端中运行：
-
-  npx playwright codegen --viewport-size=<width>,<height> <design-url>
-
-这会打开两个窗口：
-  • 浏览器窗口 — 在这里按设计稿顺序操作每个页面和交互状态
-  • 代码生成面板 — Playwright 实时将操作转为 JS 代码
-
-操作要点：
   1. 按页面顺序，把每个页面、每个交互状态都点一遍
-  2. 需要截图的状态停留 1-2 秒
-  3. 录完后把生成的代码复制粘贴给我，或保存为 scripts/capture-<module>.mjs
+  2. 需要截图的状态停留 1-2 秒（让渲染完成）
+  3. 操作完成后，直接关闭浏览器窗口即可
 
-录制完成后请告诉我，或直接把代码粘贴过来。
+⚡ 关闭浏览器后脚本会自动保存，无需手动复制代码。
+
+操作完成后请告诉我。
 ```
 
-> 如果是重新录制（`mode=record` + 脚本已存在），额外提示旧脚本将被备份为 `.bak`。
+> 如果是重新录制，额外提示旧脚本已备份为 `<script>.bak`。
 
-### C3. 接收并保存原始脚本
+### C3. 自动获取录制结果
 
-- 用户粘贴代码或告知已保存文件
-- 如果用户粘贴了代码，保存为对应的脚本文件（按路径规则）
-- 如果是重新录制，先将旧脚本备份为 `<script>.bak`
-- 跳转到**步骤 P（脚本后处理）**
+用户告知操作完成（或后台进程结束通知到达）后：
+
+1. 确认后台 Codegen 进程已退出
+2. 读取 `scripts/capture-<module>.mjs` 文件内容
+3. 验证文件非空且包含有效的 Playwright 代码（至少有 `page.goto` 调用）
+4. 如果文件不存在或为空 → 提示用户重新操作或手动粘贴代码作为兜底
+5. 跳转到**步骤 P（脚本后处理）**
 
 ---
 
