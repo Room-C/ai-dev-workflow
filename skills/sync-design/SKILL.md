@@ -18,7 +18,7 @@ init-project → capture-mockups → extract-tokens → connect-app → implemen
 
 | 参数 | 必填 | 说明 |
 |------|------|------|
-| `module` | 否 | 模块名称。指定后只同步该模块的设计稿和代码。不指定则同步全部模块 |
+| `module` | **是**（未提供时交互确认） | 模块名称。未提供时扫描已有模块，让用户选择要同步的模块（复用 `rc:capture-mockups` 的模块选择逻辑） |
 | `scope` | 否 | 同步范围：`all`（全部页面，默认）/ `<screen-name>`（指定页面） |
 | `flow-changed` | 否 | 如果为 `true`，表示交互流程有变（新增/删除页面、交互路径变化），需要重新录制采集脚本。默认 `false`（仅 UI 内容变化） |
 | `dry-run` | 否 | 如果为 `true`，只分析不修改代码（默认 `false`） |
@@ -28,8 +28,7 @@ init-project → capture-mockups → extract-tokens → connect-app → implemen
 
 ### 步骤 1：判断变更类型并重新截取
 
-> 如果指定了 `module`，以下所有操作都限定在该模块范围内。
-> 脚本路径：`scripts/capture-<module>.mjs`（无 module 时为 `scripts/capture-mockups.mjs`）。
+> 脚本路径：`scripts/capture-<module>.mjs`。
 
 设计稿更新分为两种情况，采集策略不同：
 

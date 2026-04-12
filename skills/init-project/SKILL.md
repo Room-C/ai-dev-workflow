@@ -102,9 +102,8 @@ project:
   path: <项目路径>
 
 capture:
-  script: scripts/capture-mockups.mjs   # 整体项目的 Codegen 录制脚本路径
   mode: auto                            # auto | script | explore | record
-  modules: {}                           # 按模块管理时自动填充，如:
+  modules: {}                           # rc:capture-mockups 按模块自动填充，如:
   # modules:
   #   home:
   #     script: scripts/capture-home.mjs

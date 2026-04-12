@@ -19,7 +19,7 @@ init-project → **capture-mockups** → extract-tokens → connect-app → impl
 
 | 参数 | 必填 | 说明 |
 |------|------|------|
-| `module` | 否 | 模块名称。指定后脚本和截图按模块隔离（见下方路径规则）。不指定时作为整体项目处理 |
+| `module` | **是**（未提供时交互确认） | 模块名称，用于隔离脚本和截图。未提供时进入模块选择流程（见步骤 -1） |
 | `mode` | 否 | `record`：启动 Codegen 录制（即使已有脚本也重新录制）；`script`：强制脚本回放；`explore`：AI 自动探索。不指定则自动判断 |
 | `page-filter` | 否 | 页面名称过滤器（支持通配符），不指定则截取全部页面 |
 | `config-path` | 否 | `.design-to-code.yaml` 路径，默认当前项目根目录 |
@@ -28,20 +28,60 @@ init-project → **capture-mockups** → extract-tokens → connect-app → impl
 
 ## 路径规则
 
-脚本和截图路径根据是否指定 `module` 参数而不同：
+所有脚本和截图按模块隔离：
 
-| 资源 | 无 module | 有 module（如 `home`） |
-|------|-----------|------------------------|
-| 录制脚本 | `scripts/capture-mockups.mjs` | `scripts/capture-home.mjs` |
-| 页面截图 | `docs/design/mockups/screens/` | `docs/design/mockups/home/screens/` |
-| 交互截图 | `docs/design/mockups/interactions/` | `docs/design/mockups/home/interactions/` |
-| 数据状态截图 | `docs/design/mockups/states/` | `docs/design/mockups/home/states/` |
-| 截图索引 | `docs/design/mockups/index.md` | `docs/design/mockups/home/index.md` |
+| 资源 | 路径（以模块 `home` 为例） |
+|------|---------------------------|
+| 录制脚本 | `scripts/capture-home.mjs` |
+| 页面截图 | `docs/design/mockups/home/screens/` |
+| 交互截图 | `docs/design/mockups/home/interactions/` |
+| 数据状态截图 | `docs/design/mockups/home/states/` |
+| 截图索引 | `docs/design/mockups/home/index.md` |
 
-> **模块化的好处**：大型项目可以按功能模块独立录制、独立回放、独立更新。
+> **模块化管理**：每个功能模块独立录制、独立回放、独立更新。
 > 例如 `rc:capture-mockups home`、`rc:capture-mockups chat`、`rc:capture-mockups settings` 各自有独立的录制脚本和截图目录。
 
 ## 工作流程
+
+### 步骤 -1：确认模块名称
+
+> 当用户未提供 `module` 参数时执行此步骤。
+
+**扫描已有模块：**
+- 检查 `scripts/capture-*.mjs` 文件，提取模块名（`capture-home.mjs` → `home`）
+- 检查 `docs/design/mockups/*/` 子目录
+
+**根据扫描结果使用 AskUserQuestion：**
+
+**情况 A：已有模块存在**
+
+```
+检测到以下已有模块：
+
+  1. home    — scripts/capture-home.mjs (上次采集: 2026-04-13)
+  2. chat    — scripts/capture-chat.mjs (上次采集: 2026-04-12)
+  3. settings — 仅有截图目录，无录制脚本
+
+请选择要操作的模块，或输入新的模块名称创建新模块：
+```
+
+选项包括每个已有模块 + 一个"创建新模块"选项。
+
+**情况 B：无已有模块**
+
+```
+尚未创建任何采集模块。请为本次采集命名一个模块：
+
+模块名建议与设计稿的功能区域对应，例如：
+  • home — 首页相关页面
+  • chat — 聊天/对话相关页面
+  • settings — 设置相关页面
+  • onboarding — 引导流程
+
+请输入模块名称（小写字母、数字、连字符）：
+```
+
+确认模块名后，继续步骤 0。
 
 ### 步骤 0：判断采集模式
 
@@ -85,10 +125,6 @@ init-project → **capture-mockups** → extract-tokens → connect-app → impl
 ### A2. 执行脚本
 
 ```bash
-# 无 module
-node scripts/capture-mockups.mjs
-
-# 有 module
 node scripts/capture-<module>.mjs
 ```
 
@@ -176,8 +212,6 @@ node scripts/capture-<module>.mjs
 录制完成后请告诉我，或直接把代码粘贴过来。
 ```
 
-> 如果指定了 `module`，提示中的文件名为 `scripts/capture-<module>.mjs`。
-> 如果未指定 `module`，文件名为 `scripts/capture-mockups.mjs`。
 > 如果是重新录制（`mode=record` + 脚本已存在），额外提示旧脚本将被备份为 `.bak`。
 
 ### C3. 接收并保存原始脚本
@@ -289,7 +323,7 @@ import { mkdirSync } from 'fs';
 # 截图采集报告
 
 ## 采集结果
-- 模块: <module> / （整体项目）
+- 模块: <module>
 - 设计稿 URL: <url>
 - 采集模式: script / explore / record（首次录制）
 - 录制脚本: <script_path>
@@ -324,13 +358,13 @@ import { mkdirSync } from 'fs';
 ## 使用示例
 
 ```bash
-# 首次采集整个项目（自动引导录制）
-rc:capture-mockups
-
-# 按模块首次录制
+# 按模块首次录制（自动引导 Codegen 录制）
 rc:capture-mockups home
 rc:capture-mockups chat
 rc:capture-mockups settings
+
+# 不指定模块 → 交互式选择已有模块或创建新模块
+rc:capture-mockups
 
 # 设计稿 UI 更新后重新截图（自动回放已有脚本）
 rc:capture-mockups home
