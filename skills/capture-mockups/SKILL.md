@@ -1,7 +1,7 @@
 ---
 name: rc:capture-mockups
 description: 使用 Playwright 自动截取设计稿页面，保存为参考图片。支持 Codegen 录制脚本回放（推荐）和 AI 自动探索两种模式。按模块管理脚本和截图。
-argument-hint: "<module> [--mode record|script|explore]"
+argument-hint: "<module> <url> [--mode record|script|explore]"
 allowed-tools: Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion
 ---
 
@@ -20,6 +20,7 @@ init-project → **capture-mockups** → extract-tokens → connect-app → impl
 | 参数 | 必填 | 说明 |
 |------|------|------|
 | `module` | **是**（未提供时交互确认） | 模块名称，用于隔离脚本和截图。未提供时进入模块选择流程（见步骤 -1） |
+| `url` | **是**（可从配置读取） | 设计稿 Web URL。优先使用此参数；未提供时从 `.design-to-code.yaml` 的 `design.url` 读取；都没有时交互询问 |
 | `mode` | 否 | `record`：启动 Codegen 录制（即使已有脚本也重新录制）；`script`：强制脚本回放；`explore`：AI 自动探索。不指定则自动判断 |
 | `page-filter` | 否 | 页面名称过滤器（支持通配符），不指定则截取全部页面 |
 | `config-path` | 否 | `.design-to-code.yaml` 路径，默认当前项目根目录 |
@@ -42,6 +43,58 @@ init-project → **capture-mockups** → extract-tokens → connect-app → impl
 > 例如 `rc:capture-mockups home`、`rc:capture-mockups chat`、`rc:capture-mockups settings` 各自有独立的录制脚本和截图目录。
 
 ## 工作流程
+
+### 步骤 -2：参数引导（无参数时触发）
+
+> 当用户未提供任何参数（即裸调用 `rc:capture-mockups`）时执行此步骤。
+
+使用 AskUserQuestion 展示可用参数和使用方式：
+
+```
+📸 rc:capture-mockups — 设计稿截图采集
+
+必填参数：
+  • module — 模块名称（如 home, chat, onboarding）
+  • url    — 设计稿的 Web URL（如 https://example.com/design）
+
+可选参数：
+  • --mode record|script|explore — 采集模式
+  • --viewport 393x852 — 视口大小
+  • --scale 2 — 设备缩放
+
+使用示例：
+  rc:capture-mockups onboarding https://example.com/design
+  rc:capture-mockups home --mode record
+  rc:capture-mockups chat https://example.com/chat --mode explore
+
+请提供 module 名称和设计稿 URL：
+```
+
+如果用户提供了部分参数（如只有 module 没有 url），仅补问缺失的参数，不重复问已有的。
+
+### 步骤 -1.5：确定设计稿 URL
+
+> 确定模块名称后（或同时），解析设计稿 URL。
+
+**URL 来源优先级（从高到低）：**
+
+1. 用户通过参数直接传入的 `url`
+2. `.design-to-code.yaml` 中的 `design.url`（全局）或 `design.modules.<module>.url`（模块级）
+3. 以上都没有 → 使用 AskUserQuestion 向用户询问
+
+```
+未找到设计稿 URL。请提供本次采集的设计稿地址：
+
+示例：
+  • https://www.figma.com/file/xxx/project-name
+  • https://your-design-tool.com/project/page
+  • https://localhost:3000（本地运行的设计稿）
+```
+
+获取 URL 后：
+- 验证 URL 格式合法（以 `http://` 或 `https://` 开头）
+- 如果 `.design-to-code.yaml` 存在但没有 URL，将获取的 URL 写回配置文件
+- 将 URL 传递给后续步骤（Mode B 的 B1、Mode C 的 C1 使用）
 
 ### 步骤 -1：确认模块名称
 
@@ -146,10 +199,10 @@ node scripts/capture-<module>.mjs
 > 仅当用户通过 `mode=explore` 显式指定时才使用。
 > 适用场景：设计稿结构简单（≤ 5 页面、DOM 语义清晰），无需录制。
 
-### B1. 读取项目配置
+### B1. 读取设计稿 URL
 
-- 从 `.design-to-code.yaml` 读取设计稿 URL 和工具类型
-- 如果配置文件不存在，提示先运行 `rc:init-project`
+- 使用步骤 -1.5 已确定的设计稿 URL
+- 如果步骤 -1.5 未执行（用户直接指定了 `mode=explore` + `url`），从参数或 `.design-to-code.yaml` 读取
 - 验证设计稿 URL 可访问
 
 ### B2. 准备截图环境
@@ -186,8 +239,9 @@ node scripts/capture-<module>.mjs
 
 ### C1. 读取设计稿 URL
 
-- 从 `.design-to-code.yaml` 读取设计稿 URL
-- 从配置中读取 viewport 设置
+- 使用步骤 -1.5 已确定的设计稿 URL
+- 如果步骤 -1.5 未执行（用户直接指定了 `module` + `url`），从参数或 `.design-to-code.yaml` 读取
+- 从配置中读取 viewport 设置（参数 > 配置文件 > 默认值 393x852）
 
 ### C2. 引导用户启动 Codegen
 
@@ -358,12 +412,14 @@ import { mkdirSync } from 'fs';
 ## 使用示例
 
 ```bash
-# 按模块首次录制（自动引导 Codegen 录制）
-rc:capture-mockups home
-rc:capture-mockups chat
-rc:capture-mockups settings
+# 首次使用：提供模块名 + 设计稿 URL（自动引导 Codegen 录制）
+rc:capture-mockups home https://your-design.com/home
+rc:capture-mockups chat https://your-design.com/chat
 
-# 不指定模块 → 交互式选择已有模块或创建新模块
+# 已有 .design-to-code.yaml 配置，可省略 URL
+rc:capture-mockups home
+
+# 不指定任何参数 → 显示参数引导，交互式补全
 rc:capture-mockups
 
 # 设计稿 UI 更新后重新截图（自动回放已有脚本）
@@ -373,7 +429,7 @@ rc:capture-mockups home
 rc:capture-mockups home --mode record
 
 # 简单设计稿，跳过录制直接 AI 探索
-rc:capture-mockups landing --mode explore
+rc:capture-mockups landing https://your-design.com/landing --mode explore
 ```
 
 ## 原则

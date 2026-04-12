@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.2 — 2026-04-13
+
+### Improved
+- **rc:capture-mockups**: 新增 `url` 参数，支持直接传入设计稿 Web URL，不再强制依赖 `.design-to-code.yaml` 配置文件。URL 来源三级回退：参数 > 配置文件 > 交互询问。
+- **rc:capture-mockups**: 无参数调用时显示完整的参数引导（必填/可选参数说明 + 使用示例），提升首次使用体验。
+
 ## 1.1.0 — 2026-04-13
 
 ### Changed
