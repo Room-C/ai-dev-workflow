@@ -5,13 +5,14 @@ Structured AI-assisted development workflow plugin for [Claude Code](https://cla
 ## Install
 
 ```bash
-claude install-plugin /path/to/dev_workflow
+/plugin marketplace add Room-C/ai-dev-workflow
+/plugin install ai-dev-workflow
 ```
 
-Or clone into your plugins directory:
+Or clone manually:
 
 ```bash
-git clone https://github.com/roomc-studio/ai-dev-workflow.git ~/.claude/plugins/ai-dev-workflow
+git clone https://github.com/Room-C/ai-dev-workflow.git ~/.claude/plugins/ai-dev-workflow
 ```
 
 ## Prerequisites
