@@ -74,7 +74,15 @@ allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Agent, AskUserQuestion
 
 - 如果用户要求继续，回到 Step 2 处理下一个任务
 - 如果用户要求停止，汇报当前进度
-- 当所有任务完成后，输出完整进度摘要
+- 当所有任务完成后，输出完整进度摘要，并提示下一步：
+
+```
+✅ 所有任务已完成并通过验证。
+
+📋 后续可选操作：
+   - 运行 /rc:commit-pr 提交代码并创建 PR
+   - 运行 /rc:feature-archive {module} 归档关键决策和经验教训
+```
 
 ## 执行原则
 

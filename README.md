@@ -1,6 +1,6 @@
 # ai-dev-workflow
 
-Structured AI-assisted development workflow plugin for [Claude Code](https://claude.ai/claude-code). 20 skills, 6 agents, covering three pipelines.
+Structured AI-assisted development workflow plugin for [Claude Code](https://claude.ai/claude-code). 12 skills, 6 agents, covering three pipelines.
 
 ## Install
 
@@ -41,8 +41,8 @@ The plugin reads these dynamically — no hardcoded commands.
 # Execute tasks one by one
 /rc:feature-execute notification
 
-# Or use the combo skill (analyze + design + plan in one go)
-/rc:feature-designer "用户希望添加消息通知功能"
+# Or batch-execute all tasks automatically
+/rc:plan-executor docs/features/notification/v1/tasks.md
 
 # Review your branch diff before merging
 /rc:diff-review main
@@ -69,11 +69,10 @@ rc:feature-analyze → rc:feature-design → rc:feature-plan → rc:feature-exec
 | `rc:feature-execute` | 逐任务执行 — 强制门控验证 |
 | `rc:feature-archive` | 归档 — 更新索引、知识沉淀到 docs/solutions/ |
 
-**Combo skills:**
+**Batch execution:**
 
 | Skill | Description |
 |-------|-------------|
-| `rc:feature-designer` | 需求分析 + 设计报告生成（design.md），可选任务拆解（tasks.md） |
 | `rc:plan-executor` | 批量自动执行 tasks.md 中的所有任务 |
 
 ### 2. Quality Gates
@@ -86,28 +85,19 @@ Code review, commit management, and PR review loops.
 | `rc:commit` | 提交变更 + 推送 + 创建 PR（Conventional Commits） |
 | `rc:review-pr` | PR 审查 — 先立即审查，仅在有问题时启动跟踪循环，采集 CI annotations + 外部评论并闭环回复 |
 
-### 3. Flutter Design-to-Code
+### 3. Design-to-Code (Pencil MCP)
 
-Full pipeline from design mockups to verified Flutter implementation.
+Read `.pen` design files via Pencil MCP, implement native UI code, and verify visual alignment.
 
 ```
-rc:init-project → rc:capture-mockups → rc:extract-tokens → rc:connect-app
-→ rc:implement-screen → rc:check-alignment → rc:design-critique
-→ rc:verify-interaction → rc:run-golden → rc:sync-design
+rc:read-design → rc:implement-screen → rc:verify-screen
 ```
 
 | Skill | Description |
 |-------|-------------|
-| `rc:init-project` | 初始化 Flutter D2C 项目结构 |
-| `rc:capture-mockups` | 设计稿截图采集（按模块管理，Codegen 录制回放 / AI 探索） |
-| `rc:extract-tokens` | 提取 Design Tokens → Dart 代码 |
-| `rc:connect-app` | 启动 Flutter 应用 + 连接 MCP 调试 |
-| `rc:implement-screen` | TDD 驱动页面实现 |
-| `rc:check-alignment` | 实现截图 vs 设计稿像素级对比 |
-| `rc:design-critique` | 设计质量评审（反模式 + 原则合规） |
-| `rc:verify-interaction` | 三层交互验证 |
-| `rc:run-golden` | Golden Test 回归检测 |
-| `rc:sync-design` | 设计稿更新后全链路同步（区分 UI 变更 vs 交互流程变更） |
+| `rc:read-design` | 通过 Pencil MCP 读取 .pen 设计稿，输出结构化设计信息（纯探索，不写代码） |
+| `rc:implement-screen` | 从 .pen 设计稿实现 UI 页面（默认 iOS/SwiftUI，支持 Flutter，支持多页面） |
+| `rc:verify-screen` | 对比设计稿与实现截图，识别视觉差异并提供修复建议 |
 
 ## Agents
 
