@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.4 — 2026-04-13
+
+### Improved
+- **rc:connect-app**: 使用 Marionette 协议替代 Flutter Driver 进行 UI 自动化。新增步骤 3（Marionette UI 自动化检查）：自动检测 `MarionetteBinding` 是否在 `lib/main.dart` 中启用，仅 Debug 模式生效（`kDebugMode` 编译期常量，Release 零开销）。无需创建单独的 `test_driver/main.dart` 入口文件。新增 `tap`、`enter_text`、`scroll`、`screenshot`、`get_text`、`wait_for` 等 MCP 工具权限。
+
 ## 1.1.3 — 2026-04-13
 
 ### Improved

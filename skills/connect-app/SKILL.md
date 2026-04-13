@@ -1,7 +1,7 @@
 ---
 name: rc:connect-app
 description: 启动 Flutter 应用并连接 MCP 调试工具链。
-allowed-tools: Bash, Read, Glob, Grep, mcp__dart__list_devices, mcp__dart__launch_app, mcp__dart__connect_dart_tooling_daemon, mcp__dart__hot_reload, mcp__dart__hot_restart, mcp__dart__get_runtime_errors, mcp__dart__get_widget_tree, mcp__dart__get_app_logs
+allowed-tools: Bash, Read, Write, Glob, Grep, AskUserQuestion, mcp__dart__list_devices, mcp__dart__launch_app, mcp__dart__connect_dart_tooling_daemon, mcp__dart__hot_reload, mcp__dart__hot_restart, mcp__dart__get_runtime_errors, mcp__dart__get_widget_tree, mcp__dart__get_app_logs, mcp__dart__tap, mcp__dart__enter_text, mcp__dart__scroll, mcp__dart__screenshot, mcp__dart__get_text, mcp__dart__wait_for
 ---
 
 # rc:connect-app
@@ -41,7 +41,38 @@ init-project → capture-mockups → extract-tokens → **connect-app** → impl
 - 检查 `pubspec.lock` 是否与 `pubspec.yaml` 一致
 - 如有依赖冲突，输出冲突详情
 
-### 步骤 3：选择目标设备
+### 步骤 3：Marionette UI 自动化检查
+
+Dart MCP 的 UI 自动化功能（tap、scroll、find、screenshot）基于 Marionette 协议。需要应用在 Debug 模式下启用 MarionetteBinding。
+
+- 检查 `lib/main.dart` 中是否已包含 `MarionetteBinding.ensureInitialized()`
+- 如果没有，在 `main()` 函数中添加：
+
+```dart
+import 'package:flutter/foundation.dart';
+import 'package:marionette_flutter/marionette_flutter.dart';
+
+void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  if (kDebugMode) {
+    MarionetteBinding.ensureInitialized();
+  }
+  runApp(const MyApp());
+}
+```
+
+- 确认 `pubspec.yaml` 包含依赖：
+  - `dependencies` 中有 `marionette_flutter`
+  - `dev_dependencies` 中有 `marionette_mcp`
+- 如果缺少，运行：
+  ```bash
+  flutter pub add marionette_flutter
+  flutter pub add --dev marionette_mcp
+  ```
+
+> **说明**：`kDebugMode` 是编译期常量，Release 构建时 Marionette 代码会被 tree-shaking 完全移除，零运行时开销。无需创建单独的入口文件。
+
+### 步骤 4：选择目标设备
 
 - 使用 Dart MCP `list_devices` 工具获取可用设备列表
 - 设备选择优先级：
@@ -51,29 +82,30 @@ init-project → capture-mockups → extract-tokens → **connect-app** → impl
   4. Chrome（web 开发时）
 - 如果没有可用设备，提示启动模拟器
 
-### 步骤 4：启动 Flutter 应用
+### 步骤 5：启动 Flutter 应用
 
 - 使用 Dart MCP `launch_app` 工具启动应用
-- 传入项目路径、设备 ID、目标文件
+- 传入项目路径、设备 ID、目标文件（默认 `lib/main.dart`，Marionette 在 Debug 模式自动生效）
 - 等待应用启动成功（检查进程状态和日志）
 - 记录 DTD（Dart Tooling Daemon）URI
 
-### 步骤 5：连接 Dart Tooling Daemon
+### 步骤 6：连接 Dart Tooling Daemon
 
 - 使用获取到的 DTD URI 调用 `connect_dart_tooling_daemon`
 - 验证连接状态
 - 如果连接失败，重试最多 3 次，间隔 2 秒
 
-### 步骤 6：验证 Hot Reload
+### 步骤 7：验证 Hot Reload
 
 - 调用 `hot_reload` 验证热重载功能正常
 - 检查是否有运行时错误（`get_runtime_errors`）
 - 如有错误，输出详情但不中断流程
 
-### 步骤 7：验证工具链就绪
+### 步骤 8：验证工具链就绪
 
 - 尝试获取 Widget Tree（`get_widget_tree`）验证调试桥可用
-- 确认截图功能可用（通过模拟器截图或 Flutter Driver）
+- 如果 Marionette 已启用（Debug 模式）：尝试调用 `tap` 或 `screenshot` 验证 UI 自动化可用
+- 如果非 Debug 模式：确认模拟器截图功能可用（fallback）
 - 记录所有可用的调试能力
 
 ## 输出规格
@@ -92,6 +124,7 @@ init-project → capture-mockups → extract-tokens → **connect-app** → impl
 - DTD 连接: ✅ <dtd-uri>
 - Hot Reload: ✅ 可用
 - Widget Tree: ✅ 可读取
+- Marionette: ✅ 已启用（Debug 模式，UI 自动化可用）/ ⏭️ 未启用（Release 模式）
 - 截图功能: ✅ 可用
 
 ## 运行时状态
