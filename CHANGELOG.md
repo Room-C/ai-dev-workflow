@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.1.5 — 2026-04-13
+
+### Improved
+- **rc:review-pr**: 重构为「先审查再调度」架构 — 立即执行首轮审查，仅在发现问题时才启动后续定时循环（最多 5 轮跟踪），干净的 PR 零开销即时通过。
+- **rc:review-pr**: 新增三通道反馈采集 — 除 PR review comments 外，增加 PR reviews（Request Changes body）和 GitHub Actions Check Run Annotations（CI lint/type/test 错误）。
+- **rc:review-pr**: 外部评论闭环回复 — 修复后回复 `✅ 已自动修复`，不适用时回复具体原因，已修复的评论确认修复内容和对应 commit，避免评论悬而未决。
+- **rc:review-pr**: 每个 PR 独立状态文件（`/tmp/.review-state-{PR}.json`），支持并发审查多个 PR。
+
 ## 1.1.4 — 2026-04-13
 
 ### Improved

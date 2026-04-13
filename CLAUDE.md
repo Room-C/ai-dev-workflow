@@ -7,7 +7,7 @@
 This plugin provides a structured AI-assisted development workflow with 20 skills across three pipelines:
 
 1. **Feature Pipeline** (`rc:feature-*`) — Requirements → Design → Plan → Execute → Archive
-2. **Quality Gates** (`rc:diff-review`, `rc:commit`, `rc:review-pr`) — Code review, commit, PR management
+2. **Quality Gates** (`rc:diff-review`, `rc:commit`, `rc:review-pr`) — Code review, commit, PR review (immediate first review + conditional follow-up loop)
 3. **Flutter Design-to-Code** (`rc:init-project` ... `rc:sync-design`) — Design mockup → Implementation → Verification
 
 ## Core Principles

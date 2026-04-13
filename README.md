@@ -84,7 +84,7 @@ Code review, commit management, and PR review loops.
 |-------|-------------|
 | `rc:diff-review` | 分支对比 Code Review — 多轮迭代 + 自动修复 + 知识沉淀 |
 | `rc:commit` | 提交变更 + 推送 + 创建 PR（Conventional Commits） |
-| `rc:review-pr` | PR 审查循环 — 自动 review → fix → verify，最多 6 轮 |
+| `rc:review-pr` | PR 审查 — 先立即审查，仅在有问题时启动跟踪循环，采集 CI annotations + 外部评论并闭环回复 |
 
 ### 3. Flutter Design-to-Code
 
