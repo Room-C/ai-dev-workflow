@@ -1,5 +1,19 @@
 # Changelog
 
+## 2.0.0 — 2026-04-13
+
+### Changed
+- Design-to-Code 流水线从 Flutter 专用链路切换为 Pencil MCP 驱动的跨平台链路，聚焦 `rc:read-design`、`rc:implement-screen`、`rc:verify-screen` 三个核心技能。
+- Feature Pipeline 文档统一为 `rc:feature-design` 与 `rc:feature-plan` 的分步工作流，移除已废弃的 `rc:feature-designer` 组合技能。
+- 插件元数据、README、CLAUDE 文档同步更新为 12 个 skills / 6 个 agents，并标记为 2.0.0 版本。
+
+### Removed
+- 移除旧的 Flutter Design-to-Code 辅助技能：`rc:init-project`、`rc:capture-mockups`、`rc:extract-tokens`、`rc:connect-app`、`rc:check-alignment`、`rc:design-critique`、`rc:verify-interaction`、`rc:run-golden`、`rc:sync-design`。
+
+### Added
+- `rc:read-design`：只读解析 `.pen` 设计稿并输出结构化设计信息。
+- `rc:verify-screen`：对比 Pencil 设计稿与实现截图，输出视觉差异与修复建议。
+
 ## 1.1.5 — 2026-04-13
 
 ### Improved
@@ -34,9 +48,9 @@
 
 ### Added
 - Feature Pipeline: `rc:feature-analyze`, `rc:feature-design`, `rc:feature-plan`, `rc:feature-execute`, `rc:feature-archive`
-- Combo Skills: `rc:feature-designer` (analyze+design+plan), `rc:plan-executor` (batch execute tasks.md)
+- Combo Skills: `rc:plan-executor` (batch execute tasks.md)
 - Quality Gates: `rc:diff-review` (local code review with confidence gating), `rc:commit` (conventional commit + PR), `rc:review-pr` (auto PR review loop)
-- Flutter Design-to-Code: 10 skills from `rc:init-project` to `rc:sync-design`
+- Flutter Design-to-Code: 10 skills from `rc:init-project` to `rc:sync-design` (historical in 1.0.0)
 - 6 agents: analyst, decomposer, 3 design reviewers, task-runner
 - Knowledge compounding via `docs/solutions/` with compound-engineering dual-track schema
 - `preprocess-diff.sh` for token-efficient diff preprocessing

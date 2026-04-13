@@ -1,175 +1,193 @@
 ---
 name: rc:implement-screen
-description: 实现单个页面 — TDD 驱动，从组件到页面，截图验证 + Golden 测试。
-argument-hint: "<screen-name>"
-allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Agent, AskUserQuestion
+description: 从 Pencil 设计稿实现 UI 页面。读取 .pen 文件获取结构化设计数据，生成平台原生代码（默认 iOS/SwiftUI，支持 Flutter）。支持多页面批量实现。
+argument-hint: "<pen-file> <page-names...> [--platform ios|flutter] [--target-dir <dir>]"
+allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Agent, AskUserQuestion, mcp__pencil__open_document, mcp__pencil__get_editor_state, mcp__pencil__batch_get, mcp__pencil__snapshot_layout, mcp__pencil__get_screenshot, mcp__pencil__get_guidelines, mcp__pencil__export_nodes, mcp__pencil__get_variables, mcp__xcodebuildmcp__build_sim, mcp__xcodebuildmcp__build_run_sim, mcp__xcodebuildmcp__boot_sim, mcp__xcode__BuildProject, mcp__xcode__RunAllTests, mcp__dart__analyze_files, mcp__dart__run_tests, mcp__dart__launch_app, mcp__dart__hot_reload
 ---
 
 # rc:implement-screen
 
 ## 角色
 
-你是 Flutter 页面实现专家。你的职责是基于设计稿，采用 TDD 方式从原子组件到完整页面逐步构建 UI，通过截图验证实现与设计的一致性，并生成 Golden Test 快照防止回归。
-
-```
-init-project → capture-mockups → extract-tokens → connect-app → **implement-screen** → check-alignment → design-critique → verify-interaction → run-golden → sync-design
-```
+你是 UI 页面实现专家。你的职责是从 Pencil 设计稿中读取结构化设计数据，转化为平台原生 UI 代码。你同时精通 SwiftUI 和 Flutter，根据目标平台输出对应的高质量代码。
 
 ## 输入参数
 
 | 参数 | 必填 | 说明 |
 |------|------|------|
-| `screen-name` | 是 | 页面名称，与 `docs/design/mockups/` 中的截图文件名对应 |
-| `component-only` | 否 | 如果为 `true`，只实现组件不组合页面 |
-| `skip-golden` | 否 | 跳过 Golden Test 生成（调试时使用） |
-| `iteration` | 否 | 迭代轮次，默认 1（首次实现） |
+| `pen-file` | 是 | `.pen` 设计稿文件路径 |
+| `page-names` | 是 | 要实现的页面名称，支持多个（空格分隔）。通常属于同一模块 |
+| `platform` | 否 | 目标平台：`ios`（默认）或 `flutter`。未指定时自动检测 |
+| `target-dir` | 否 | 目标项目目录。未指定时根据平台使用默认目录 |
+| `component-only` | 否 | 如果为 `true`，只实现共享组件不组合页面 |
+| `iteration` | 否 | 迭代轮次，默认 1（首次实现）。后续迭代在现有代码上增量修改 |
+
+## 平台检测逻辑
+
+当 `platform` 未指定时，按以下顺序检测：
+
+1. 如果 `target-dir` 已指定 → 扫描该目录：
+   - 存在 `.xcodeproj` 或 `.swift` 文件 → iOS
+   - 存在 `pubspec.yaml` 或 `.dart` 文件 → Flutter
+2. 如果 `target-dir` 未指定 → 默认 iOS
+
+**默认目录映射：**
+
+| 平台 | 默认目录 | 说明 |
+|------|---------|------|
+| iOS | `iOS/` | 项目 CLAUDE.md 中定义的 iOS 默认目录 |
+| Flutter | `flutter/` | Flutter 项目目录 |
 
 ## 工作流程
 
-### 步骤 1：加载设计参考
+### 步骤 0：环境准备
 
-- 读取 `docs/design/mockups/<screen-name>.png`（或同名文件）作为视觉参考
-- 读取 `docs/design/mockups/index.md` 获取页面元信息
-- 读取 `lib/design/tokens.dart` 获取 Design Tokens
-- 如果参考文件缺失，提示先运行 `rc:capture-mockups`
+- 读取项目 `CLAUDE.md` 获取架构约束和代码规范
+- 确认目标平台和目标目录
+- 读取设计规范文档（如果存在）：
+  - `docs/design/pencil/pactpilot-design-spec.md` — 视觉规范（token 参考）
+  - `docs/design/pencil/pactpilot-interaction-spec.md` — 交互规范
+  - `docs/design/pencil/product-spec.md` — 产品规范
 
-### 步骤 2：分析设计稿结构
+### 步骤 1：读取设计稿
 
-使用 Agent（subagent）分析设计截图：
+1. 调用 `get_editor_state` 检查编辑器状态
+2. 调用 `open_document(pen-file)` 打开设计稿
+3. 对每个 page-name：
+   - `batch_get` — 获取节点树（组件层次、类型、属性）
+   - `snapshot_layout` — 获取精确布局数据（位置、尺寸、间距）
+   - `get_screenshot` — 获取页面渲染截图作为视觉参考
+   - `get_variables` — 获取设计变量（颜色、字号等）
+4. 识别页面间共享的组件（在多个 page-name 中重复出现的节点）
 
-- 识别页面组件层次结构
-- 列出所有原子组件（按钮、输入框、图标、卡片等）
-- 识别布局模式（Column / Row / Stack / Grid）
-- 标注关键尺寸和间距
-- 输出组件清单和布局树
+### 步骤 2：分析组件结构
 
-### 步骤 3：TDD — 编写测试骨架
+基于设计稿节点树，产出：
 
-为每个需要实现的组件和页面创建测试文件：
+- **共享组件清单** — 多页面复用的组件，优先实现
+- **页面专属组件** — 仅在单个页面出现的组件
+- **布局模型** — 每个页面的布局层次（ScrollView / Stack / List 等）
+- **设计 Token 映射** — 将设计稿中的值映射到已有 Token（颜色名 → 变量名）
 
-```dart
-// test/screens/<screen_name>_test.dart
-import 'package:flutter_test/flutter_test.dart';
-import 'package:golden_toolkit/golden_toolkit.dart';
+在分析时，同时参考 `pactpilot-design-spec.md` 中的 Token 命名规范，确保代码中使用规范化的 Token 名称而非硬编码值。
 
-void main() {
-  group('<ScreenName> Screen', () {
-    testWidgets('renders correctly', (tester) async {
-      // TODO: 实现后补充
-    });
+### 步骤 3：检查现有代码
 
-    testGoldens('<screen_name> golden', (tester) async {
-      // Golden Test 骨架
-    });
-  });
-}
-```
+- 扫描目标目录，检查是否已有相关实现
+- 如果是 `iteration > 1`：读取现有代码，识别需要修改的部分
+- 如果是首次实现：检查是否有可复用的共享组件
 
-### 步骤 4：实现原子组件
+### 步骤 4：实现代码
 
-按从小到大的顺序实现组件：
+按以下顺序实现：
 
-1. **原子组件**（按钮、输入框、标签等）
-   - 每个组件一个文件：`lib/widgets/<component_name>.dart`
-   - 使用 Design Tokens，不硬编码任何视觉属性
-   - 每实现一个组件运行一次对应测试
+1. **共享组件**（如果有多页面复用的组件）
+2. **页面专属组件**
+3. **页面组合**
 
-2. **组合组件**（卡片、列表项、表单区域等）
-   - 组合原子组件
-   - 处理组件间的间距和布局
+#### iOS / SwiftUI 实现规范
 
-3. **页面组件**
-   - 组合所有子组件
-   - 处理页面级布局（Scaffold, AppBar, SafeArea 等）
-   - 处理滚动行为
+- 遵循项目 CLAUDE.md 中的 iOS 代码规范
+- `@Observable` + `@MainActor` for state objects
+- 一个 ViewModel 对应一个页面
+- View 中不包含业务逻辑
+- 使用项目已有的 Design Token / Theme 系统
 
-每个组件实现后：
-- 运行 Widget 测试验证
-- 如果应用已连接（`rc:connect-app`），触发 Hot Reload 实时预览
+#### Flutter 实现规范
 
-### 步骤 5：截图验证
+- 遵循项目 CLAUDE.md 中的 Flutter 代码规范
+- 使用项目已有的 ThemeData / Design Token
+- Widget 职责单一
 
-- 获取当前实现的截图
-- 与设计稿参考图对比（调用 `rc:check-alignment` 的核心逻辑）
-- 如果偏差明显：
-  - 列出差异点
-  - 自动调整并重试（最多 3 轮）
-  - 超过 3 轮后使用 AskUserQuestion 征求用户意见
+**通用规范：**
+- 所有视觉属性引用 Design Token，不硬编码颜色/字号/间距值
+- 如果设计稿中的值在现有 Token 系统中不存在，标记为 `TODO: 新增 Token` 并使用最接近的现有值
+- 组件命名与设计稿节点名称保持语义一致
 
-### 步骤 6：生成 Golden Test
+### 步骤 5：构建验证
 
-- 为页面生成 Golden Test 快照
-- 存储路径：`test/golden/<screen_name>/`
-- 包含多个尺寸变体：
-  - 默认尺寸（设计稿尺寸）
-  - 小屏设备（375x667）
-  - 大屏设备（428x926）
+根据平台执行构建验证：
 
-### 步骤 7：运行全部测试
+| 平台 | 验证方式 |
+|------|---------|
+| iOS | XcodeBuild MCP `build_sim` 或 Xcode MCP `BuildProject` — 确保编译通过 |
+| Flutter | Dart MCP `analyze_files` + `run_tests` — 确保无静态错误 |
 
-- 运行 `flutter test test/screens/<screen_name>_test.dart`
-- 确保所有测试通过
-- 如有失败，修复后重新运行
+如果构建失败：
+- 读取错误信息，修复编译错误
+- 重新构建，最多重试 3 轮
+- 超过 3 轮后用 AskUserQuestion 报告问题
+
+### 步骤 6：输出实现报告
 
 ## 输出规格
 
 ```markdown
-# 页面实现报告: <screen-name>
+# 页面实现报告
 
-## 设计参考
-- 设计稿: docs/design/mockups/<screen-name>.png
-- Tokens: lib/design/tokens.dart
+## 概览
+- 设计稿: <pen-file>
+- 平台: iOS / Flutter
+- 目标目录: <target-dir>
+- 页面数: N
 
-## 实现文件
-| 文件 | 类型 | 行数 |
+## 已实现页面
+
+### <page-name-1>
+
+**设计截图:**
+[Pencil MCP 截图]
+
+**组件层次:**
+```
+PageView
+├── HeaderSection
+│   ├── BackButton
+│   └── TitleLabel
+├── ContentScrollView
+│   ├── InfoCard
+│   └── ActionSection
+└── BottomBar
+```
+
+**实现文件:**
+| 文件 | 类型 | 说明 |
 |------|------|------|
-| lib/screens/<name>_screen.dart | 页面 | 120 |
-| lib/widgets/<component>.dart | 组件 | 45 |
-| ... | ... | ... |
+| Views/SettingsView.swift | 页面 | 主页面视图 |
+| Views/Components/InfoCard.swift | 组件 | 信息卡片 |
 
-## 测试文件
-| 文件 | 测试数 | 状态 |
-|------|--------|------|
-| test/screens/<name>_test.dart | 5 | ✅ 全部通过 |
-| test/golden/<name>/ | 3 snapshots | ✅ 已生成 |
+**Token 映射:**
+| 设计稿值 | Token 名称 | 状态 |
+|----------|-----------|------|
+| #0F172A | Color.background | ✅ 已有 |
+| #34D399 | Color.primary | ✅ 已有 |
+| 14px | Font.caption | ⚠️ 近似 (现有 13px) |
 
-## 组件层次
-```
-<ScreenName>Screen
-├── AppBar (title: "...")
-├── Body
-│   ├── HeaderSection
-│   │   ├── AvatarWidget
-│   │   └── TitleText
-│   ├── ContentCard
-│   │   ├── CardHeader
-│   │   └── CardBody
-│   └── ActionButtons
-│       ├── PrimaryButton
-│       └── SecondaryButton
-└── BottomNavBar
-```
+### <page-name-2>
+...
 
-## 对齐度
-- 整体匹配度: 95%
-- 主要偏差: <描述>
+## 共享组件
+| 组件 | 使用页面 | 文件 |
+|------|---------|------|
+| InfoCard | page-1, page-2 | Components/InfoCard.swift |
 
-## 迭代记录
-- 第 1 轮: 基础布局实现
-- 第 2 轮: 间距微调
-- 第 3 轮: 颜色和字体细节
+## 构建状态
+- ✅ 编译通过 / ❌ 编译失败（附错误信息）
+
+## 新增 Token 建议
+| 值 | 建议名称 | 使用场景 |
+|----|---------|---------|
+| 14px | Font.caption | 辅助说明文字 |
 
 ## 下一步
-- 运行 `rc:check-alignment <screen-name>` 获取详细对齐报告
-- 运行 `rc:design-critique <screen-name>` 获取设计评审
-- 运行 `rc:verify-interaction <screen-name>` 验证交互
+- 运行 `rc:verify-screen` 对比实现与设计稿
 ```
 
 ## 原则
 
-1. **TDD 驱动**：先写测试，再写实现。测试是设计的可执行规格说明。
-2. **原子化构建**：从最小组件开始，逐步组合。每一步都可测试、可验证。
-3. **Token 约束**：所有视觉属性必须引用 Design Tokens，零硬编码值。
-4. **渐进精确**：首轮实现结构和布局，后续迭代打磨细节。不追求一次完美。
-5. **人机协作**：自动化修复 3 轮内解决大部分问题，超出后请求人工判断。
-6. **代码质量**：组件职责单一，命名语义化，遵循 Flutter 社区最佳实践。
+1. **设计稿为 Single Source of Truth** — 所有视觉属性以 `.pen` 文件为准。如果 `.pen` 与 markdown 设计文档不一致，以 `.pen` 为准。
+2. **Token 优先** — 尽可能引用已有 Token，不硬编码。但不为了避免硬编码而创建不合理的 Token。
+3. **共享组件先行** — 多页面共享的组件先实现，避免重复代码。
+4. **增量迭代** — `iteration > 1` 时在现有代码上修改，不重写。
+5. **平台原生** — 用目标平台的最佳实践，不做跨平台抽象。
+6. **构建必须通过** — 代码写完必须能编译，不允许留下编译错误。

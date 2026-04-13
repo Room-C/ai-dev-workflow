@@ -1,6 +1,6 @@
 {
   "name": "ai-dev-workflow",
-  "description": "Structured AI-assisted development workflow: feature pipeline, quality gates, and Flutter design-to-code.",
+  "description": "Structured AI-assisted development workflow: feature pipeline, quality gates, and Pencil design-to-code.",
   "owner": {
     "name": "Room C Studio",
     "url": "https://github.com/Room-C"
@@ -8,8 +8,8 @@
   "plugins": [
     {
       "name": "ai-dev-workflow",
-      "description": "Structured AI-assisted development workflow: feature pipeline, quality gates, and Flutter design-to-code. 20 skills, 6 agents.",
-      "version": "1.1.5",
+      "description": "Structured AI-assisted development workflow: feature pipeline, quality gates, and Pencil design-to-code. 12 skills, 6 agents.",
+      "version": "2.0.0",
       "author": {
         "name": "Room C Studio",
         "url": "https://github.com/Room-C"
@@ -22,6 +22,8 @@
         "feature-pipeline",
         "code-review",
         "design-to-code",
+        "pencil",
+        "ios",
         "flutter",
         "quality-gates",
         "knowledge-management"

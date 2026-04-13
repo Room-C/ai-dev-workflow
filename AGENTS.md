@@ -6,8 +6,8 @@
 
 | Agent | 文件 | 职责 | 被谁调用 |
 |-------|------|------|---------|
-| analyst | `agents/design/analyst.md` | 设计报告生成 — 11 步流程产出 design.md | `rc:feature-designer` |
-| decomposer | `agents/design/decomposer.md` | 任务拆解 — 6 步流程产出 tasks.md | `rc:feature-designer` |
+| analyst | `agents/design/analyst.md` | 设计报告生成 — 11 步流程产出 design.md | `rc:feature-design` |
+| decomposer | `agents/design/decomposer.md` | 任务拆解 — 6 步流程产出 tasks.md | `rc:feature-plan` |
 | coherence-reviewer | `agents/design/coherence-reviewer.md` | 内部一致性审查 — 术语统一、模型与接口匹配 | `rc:feature-design` Step 3 |
 | feasibility-reviewer | `agents/design/feasibility-reviewer.md` | 可行性审查 — 基础设施就绪、技术兼容性 | `rc:feature-design` Step 3 |
 | scope-guardian | `agents/design/scope-guardian.md` | 范围守卫 — 防止需求蔓延和过度设计 | `rc:feature-design` Step 3 |

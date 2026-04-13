@@ -222,6 +222,18 @@ Tasks [N]-[M]/[Total] from [tasks.md 路径]
 
 3. 向用户汇报完整结果，等待用户确认是否提交
 
+### 完成后提示用户
+
+所有任务执行完毕并验证通过后，输出以下提示（替换 `{module}` 为实际模块名）：
+
+```
+✅ 所有任务已完成并通过验证。
+
+📋 后续可选操作：
+   - 运行 /commit-pr 提交代码并创建 PR
+   - 运行 /feature-archive {module} 归档关键决策和经验教训
+```
+
 ## 断点续执行
 
 如果执行中途被中断（用户停止、上下文超限等），可以通过以下方式恢复：
@@ -239,18 +251,16 @@ Tasks [N]-[M]/[Total] from [tasks.md 路径]
 - **不强行修复**：修复尝试超过 2 次就停下来，让用户介入
 - **保持可恢复**：每步都更新 tasks.md 状态，确保中断后可以恢复
 
-## 与 feature-designer 的配合
+## 与 Feature Pipeline 的配合
 
 ```
-feature-designer                    plan-executor
-─────────────                      ─────────────
-Phase 1-2: 需求澄清 + 现状分析
-Phase 3: Analyst → design.md
-Phase 4: Decomposer → tasks.md ──→ 输入 tasks_path
-Phase 5: 交付确认                   Phase 0: 环境检查
-                                   Phase 1: 解析任务
-                                   Phase 2: 逐任务执行（简单直接做 / 复杂派子代理）
-                                   Phase 3: 生成报告
+feature-design → feature-plan → plan-executor
+─────────────    ────────────    ─────────────
+design.md        tasks.md ──────→ 输入 tasks_path
+                                  Phase 0: 环境检查
+                                  Phase 1: 解析任务
+                                  Phase 2: 逐任务执行（简单直接做 / 复杂派子代理）
+                                  Phase 3: 生成报告
 ```
 
 ## 参考文件
