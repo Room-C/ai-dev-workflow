@@ -15,16 +15,14 @@ Claude Code 插件 — 结构化 AI 辅助开发工作流。12 个技能、6 个
 git clone https://github.com/Room-C/ai-dev-workflow.git ~/.claude/plugins/ai-dev-workflow
 ```
 
-## 前置要求
+## 推荐配置
 
-项目根目录需要一个 `CLAUDE.md`，至少包含以下内容，插件会动态读取（无硬编码命令）：
+在项目根目录放一个 `CLAUDE.md` 可以让插件更好地理解你的项目，不是必须的。插件会动态读取以下信息（如果有的话）：
 
-| 必备项 | 示例 |
-|--------|------|
-| 架构边界 | 技术栈、模块结构、导入规则 |
-| 代码规范 | 包管理器、代码风格、命名约定 |
-| 验证命令 | lint、typecheck、test 等各类变更的检查命令 |
-| 安全护栏 | NEVER / ALWAYS 规则 |
+- 架构边界 — 技术栈、模块结构、导入规则
+- 代码规范 — 包管理器、代码风格、命名约定
+- 验证命令 — lint、typecheck、test 等
+- 安全护栏 — NEVER / ALWAYS 规则
 
 ## 三条流水线一览
 
