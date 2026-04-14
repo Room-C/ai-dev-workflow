@@ -105,6 +105,7 @@ git diff $DIFF_RANGE --stat -- \
 3. **检查项目规范** — 如果存在 `CLAUDE.md`、`.editorconfig`、`CONTRIBUTING.md` 等，回顾其中的架构边界和代码约定
 4. **识别语言和技术栈** — 根据文件扩展名和项目结构判断涉及的语言/框架
 5. **检索已有 solutions** — 如果存在 `docs/solutions/` 目录，检索与本次改动相关的已沉淀模式，在审查时对照检查是否重蹈覆辙
+6. **读取已知问题** — 读取 `skills/shared/known-issues.md`（通过插件缓存路径定位），检查本 Skill 的已知问题，在后续步骤中主动规避
 
 ### Step 2: 准备 Review 输出目录
 
@@ -565,3 +566,32 @@ source_review: <关联审查报告路径>
 9. **语言感知校验是 checklist 校验** — 对照矩阵检查 Step 3 审查输出的覆盖度，而非独立做一遍完整审查
 10. **修复分级必须遵守** — `safe_auto` 直接修复，`gated_auto` 必须经用户确认，`manual`/`advisory` 不修改代码
 11. **知识沉淀使用 compound-engineering 双轨 schema** — Bug Track / Knowledge Track，与 `ce:compound` 共享知识池
+
+### Step 10: 记录执行遥测
+
+在流程结束时（无论哪个结束条件），记录本次执行结果：
+
+```bash
+RECORD_SCRIPT=$(ls "$HOME/.claude/plugins/cache/ai-dev-workflow"/*/*/skills/shared/scripts/record-outcome.sh 2>/dev/null | tail -1)
+if [ -z "$RECORD_SCRIPT" ]; then
+  for candidate in "skills/shared/scripts/record-outcome.sh" "dev_workflow/skills/shared/scripts/record-outcome.sh"; do
+    [ -f "$candidate" ] && RECORD_SCRIPT="$candidate" && break
+  done
+fi
+```
+
+根据实际执行路径选择状态：
+
+| 场景 | status | failure_step | failure_reason | fallback_used |
+|------|--------|-------------|----------------|---------------|
+| Codex Skill 成功完成 | `success` | | | |
+| Codex Skill 失败，Bash 直调成功 | `partial` | `3a_skill` | 具体原因 | `3a_bash` |
+| Codex 全部失败，Agent 审查完成 | `partial` | `3a` | 具体原因 | `3b_agent` |
+| 审查引擎全部不可用 | `failed` | `3` | 具体原因 | |
+| 全部步骤主路径成功，无 P1 | `success` | | | |
+
+```bash
+bash "$RECORD_SCRIPT" diff-review <status> [failure-step] [failure-reason] [fallback-used]
+```
+
+如果 `RECORD_SCRIPT` 不存在，跳过遥测（不阻塞主流程）。

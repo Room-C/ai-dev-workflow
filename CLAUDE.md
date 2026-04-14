@@ -21,6 +21,38 @@ All skills follow these principles:
 - **Confidence Gating**: Review findings below 0.50 confidence are discarded; 0.50-0.59 only P1; ≥ 0.60 kept
 - **Autofix Classification**: safe_auto (direct fix) / gated_auto (fix + confirm) / manual (report only) / advisory (log only)
 
+## Execution Telemetry
+
+每个 Skill 执行结束时（无论成功、部分完成还是失败），必须追加一条遥测记录。
+
+### 记录方式
+
+```bash
+# 定位遥测脚本
+RECORD_SCRIPT=$(ls "$HOME/.claude/plugins/cache/ai-dev-workflow"/*/*/skills/shared/scripts/record-outcome.sh 2>/dev/null | tail -1)
+if [ -z "$RECORD_SCRIPT" ]; then
+  # 本地开发 fallback
+  for candidate in "skills/shared/scripts/record-outcome.sh" "dev_workflow/skills/shared/scripts/record-outcome.sh"; do
+    [ -f "$candidate" ] && RECORD_SCRIPT="$candidate" && break
+  done
+fi
+
+# 调用
+bash "$RECORD_SCRIPT" <skill-name> <status> [failure-step] [failure-reason] [fallback-used]
+```
+
+### 状态定义
+
+| 状态 | 含义 |
+|------|------|
+| `success` | 所有步骤按主路径完成 |
+| `partial` | 触发了降级/fallback 但最终完成了核心目标 |
+| `failed` | 未能完成核心目标 |
+
+### 已知问题规避
+
+每个 Skill 在 Step 1（上下文理解）阶段，应读取 `skills/shared/known-issues.md`（通过插件缓存路径或本地路径），检查是否有与当前执行场景匹配的已知问题，并主动规避。
+
 ## Prerequisites
 
 For skills to work correctly, the host project should have a `CLAUDE.md` with at minimum:

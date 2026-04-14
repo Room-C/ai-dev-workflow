@@ -2,7 +2,7 @@
 
 Claude Code 插件 — 把「随意对话式编程」变成**结构化 AI 工作流**。
 
-一句 slash command 就能驱动完整的开发链路：需求分析 → 架构设计 → 任务拆解 → 逐任务实现 → 代码审查 → 提交 PR。12 个技能、6 个 Agent，即装即用。
+一句 slash command 就能驱动完整的开发链路：需求分析 → 架构设计 → 任务拆解 → 逐任务实现 → 代码审查 → 提交 PR。13 个技能、6 个 Agent，即装即用。
 
 ## 安装
 
@@ -91,6 +91,20 @@ git clone https://github.com/Room-C/ai-dev-workflow.git ~/.claude/plugins/ai-dev
 | `rc:read-design` | 读取 `.pen` 设计稿，输出结构化设计信息（节点树、样式、截图），纯探索不写代码 |
 | `rc:implement-screen` | 从设计稿生成 UI 页面代码（默认 iOS/SwiftUI，支持 Flutter，支持多页面） |
 | `rc:verify-screen` | 对比设计稿与模拟器实现截图，识别视觉差异并输出修复建议 |
+
+### Self-Evolving — 自进化
+
+| 技能 | 说明 |
+|------|------|
+| `rc:skill-evolve` | 分析执行遥测数据，识别反复失败模式，自动更新 known-issues 注册表，对严重模式提出 SKILL.md 补丁 |
+
+所有 Skill 执行后自动记录遥测到 `~/.ai-dev-workflow/telemetry.jsonl`，`rc:skill-evolve` 基于此数据闭环改进：
+
+```
+Skill 执行 → 遥测记录 → skill-evolve 分析 → known-issues 更新 / SKILL.md 补丁
+                                                    ↓
+                                    下次执行自动规避已知问题
+```
 
 ## Agent 列表
 

@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.1.0 — 2026-04-14
+
+### Added
+- **rc:skill-evolve**: 新增自进化分析技能 — 分析 Skill 执行遥测数据，识别反复失败模式，自动更新 known-issues 注册表，对严重模式提出 SKILL.md 补丁提案。
+- **执行遥测协议**: 所有 Skill 执行结束时记录状态（success/partial/failed）到 `~/.ai-dev-workflow/telemetry.jsonl`，通过共享脚本 `record-outcome.sh` 实现。
+- **已知问题注册表**: `skills/shared/known-issues.md` — Skill 执行前读取，主动规避已知问题。
+
+### Changed
+- **rc:diff-review**: Step 1 新增读取 known-issues.md；末尾新增 Step 10 遥测记录。
+- **CLAUDE.md**: 新增 Execution Telemetry 协议节。
+
 ## 2.0.1 — 2026-04-14
 
 ### Fixed
