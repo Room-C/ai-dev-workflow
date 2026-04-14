@@ -88,9 +88,18 @@ rc:review-pr 42 --model haiku      # 指定 PR + 指定模型
 - 参考 CLAUDE.md 中的 Architecture Boundaries 和 Code Conventions
 
 ## Step 0: 轮次管理（仅 CronCreate 模式）
-1. 读取状态文件 `/tmp/.review-state-{PR_NUMBER}.json`
-2. round += 1，写回状态文件
-3. 如果 round > maxRounds：
+1. **检查 PR 状态（最先执行）：**
+   ```bash
+   PR_STATE=$(gh pr view {PR_NUMBER} --json state -q '.state')
+   ```
+   如果 `PR_STATE` 不是 `OPEN`（即已 MERGED 或 CLOSED）：
+   - 发送 macOS 通知：`"PR #{PR_NUMBER} 已合并/关闭，自动审查停止"`
+   - CronDelete 取消定时任务
+   - 删除状态文件
+   - 结束（不执行后续任何步骤）
+2. 读取状态文件 `/tmp/.review-state-{PR_NUMBER}.json`
+3. round += 1，写回状态文件
+4. 如果 round > maxRounds：
    - 发送 macOS 通知："PR #{PR_NUMBER} 已达最大审查轮次（{maxRounds} 轮），请人工检查"
    - CronDelete 取消定时任务
    - 删除状态文件
