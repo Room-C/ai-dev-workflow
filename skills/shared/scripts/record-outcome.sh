@@ -49,16 +49,15 @@ TELEMETRY_FILE="$TELEMETRY_DIR/telemetry.jsonl"
 # 生成 ISO 8601 时间戳
 TS=$(date +"%Y-%m-%dT%H:%M:%S%z")
 
-# 构建 JSON（用 printf 避免依赖 jq）
-JSON="{"
-JSON+="\"ts\":\"${TS}\""
-JSON+=",\"skill\":\"${SKILL_NAME}\""
-JSON+=",\"project\":\"${PROJECT_NAME}\""
-JSON+=",\"status\":\"${STATUS}\""
-[ -n "$FAILURE_STEP" ]  && JSON+=",\"failure_step\":\"${FAILURE_STEP}\""
-[ -n "$FAILURE_REASON" ] && JSON+=",\"failure_reason\":\"${FAILURE_REASON}\""
-[ -n "$FALLBACK_USED" ]  && JSON+=",\"fallback_used\":\"${FALLBACK_USED}\""
-JSON+="}"
+# 构建 JSON（使用 python3 json.dumps 安全转义特殊字符）
+JSON=$(python3 -c "
+import json, sys
+d = {'ts': sys.argv[1], 'skill': sys.argv[2], 'project': sys.argv[3], 'status': sys.argv[4]}
+if sys.argv[5]: d['failure_step'] = sys.argv[5]
+if sys.argv[6]: d['failure_reason'] = sys.argv[6]
+if sys.argv[7]: d['fallback_used'] = sys.argv[7]
+print(json.dumps(d, ensure_ascii=False))
+" "$TS" "$SKILL_NAME" "$PROJECT_NAME" "$STATUS" "$FAILURE_STEP" "$FAILURE_REASON" "$FALLBACK_USED")
 
 # 追加到日志
 echo "$JSON" >> "$TELEMETRY_FILE"

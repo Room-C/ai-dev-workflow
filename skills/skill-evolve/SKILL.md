@@ -40,15 +40,22 @@ import sys, json
 from collections import defaultdict
 
 stats = defaultdict(lambda: {'total': 0, 'success': 0, 'partial': 0, 'failed': 0, 'reasons': defaultdict(int)})
+skipped = 0
 for line in sys.stdin:
     line = line.strip()
     if not line: continue
-    r = json.loads(line)
+    try:
+        r = json.loads(line)
+    except json.JSONDecodeError:
+        skipped += 1
+        continue
     s = stats[r['skill']]
     s['total'] += 1
     s[r['status']] += 1
     if r.get('failure_reason'):
         s['reasons'][r['failure_reason']] += 1
+if skipped:
+    print(f'(skipped {skipped} malformed lines)', file=sys.stderr)
 
 for skill, s in sorted(stats.items()):
     rate = s['success'] / s['total'] * 100 if s['total'] > 0 else 0
@@ -101,6 +108,10 @@ for skill, s in sorted(stats.items()):
 | `architecture` | 跨 Skill 出现同类问题 | 提出架构级改进建议 |
 
 ### Step 5: 生成改进报告
+
+```bash
+mkdir -p "docs/develop/skill-evolution"
+```
 
 输出到 `docs/develop/skill-evolution/{YYYY-MM-DD}-report.md`：
 
@@ -165,11 +176,16 @@ for skill, s in sorted(stats.items()):
 如果 `$TELEMETRY_FILE` 超过 1000 行：
 
 ```bash
-# 归档旧数据
+# 归档旧数据（兼容 macOS BSD head，不使用 GNU head -n -200）
 ARCHIVE_FILE="$HOME/.ai-dev-workflow/telemetry-archive-$(date +%Y%m%d).jsonl"
-head -n -200 "$TELEMETRY_FILE" >> "$ARCHIVE_FILE"
-tail -200 "$TELEMETRY_FILE" > "$TELEMETRY_FILE.tmp"
-mv "$TELEMETRY_FILE.tmp" "$TELEMETRY_FILE"
+TOTAL=$(wc -l < "$TELEMETRY_FILE")
+KEEP=200
+ARCHIVE_COUNT=$((TOTAL - KEEP))
+if [ "$ARCHIVE_COUNT" -gt 0 ]; then
+  head -n "$ARCHIVE_COUNT" "$TELEMETRY_FILE" >> "$ARCHIVE_FILE"
+  tail -n "$KEEP" "$TELEMETRY_FILE" > "$TELEMETRY_FILE.tmp"
+  mv "$TELEMETRY_FILE.tmp" "$TELEMETRY_FILE"
+fi
 ```
 
 保留最近 200 条用于日常分析，归档历史数据供深度分析。
@@ -178,7 +194,12 @@ mv "$TELEMETRY_FILE.tmp" "$TELEMETRY_FILE"
 
 ```bash
 RECORD_SCRIPT=$(ls "$HOME/.claude/plugins/cache/ai-dev-workflow"/*/*/skills/shared/scripts/record-outcome.sh 2>/dev/null | tail -1)
-bash "$RECORD_SCRIPT" skill-evolve <status>
+if [ -z "$RECORD_SCRIPT" ]; then
+  for candidate in "skills/shared/scripts/record-outcome.sh" "dev_workflow/skills/shared/scripts/record-outcome.sh"; do
+    [ -f "$candidate" ] && RECORD_SCRIPT="$candidate" && break
+  done
+fi
+[ -n "$RECORD_SCRIPT" ] && bash "$RECORD_SCRIPT" skill-evolve <status>
 ```
 
 ## 重要提醒
