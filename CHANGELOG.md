@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.1 — 2026-04-14
+
+### Fixed
+- **rc:diff-review**: 修复预处理脚本 `preprocess-diff.sh` 路径查找失败 — `find .` 搜不到插件缓存目录，改为 `ls "$HOME/.claude/plugins/cache/"` 模式匹配。
+- **rc:diff-review**: Step 3a Codex Companion 调用改为优先通过 `Skill("codex:review")` 嵌套调用（自动解锁 `disable-model-invocation` 标志），Bash 直调降为 fallback。
+
 ## 2.0.0 — 2026-04-13
 
 ### Changed

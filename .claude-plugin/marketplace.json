@@ -9,7 +9,7 @@
     {
       "name": "ai-dev-workflow",
       "description": "Structured AI-assisted development workflow: feature pipeline, quality gates, and Pencil design-to-code. 12 skills, 6 agents.",
-      "version": "2.0.0",
+      "version": "2.0.1",
       "author": {
         "name": "Room C Studio",
         "url": "https://github.com/Room-C"
