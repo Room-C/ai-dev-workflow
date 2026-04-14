@@ -19,6 +19,8 @@ git clone https://github.com/Room-C/ai-dev-workflow.git ~/.claude/plugins/ai-dev
 
 ## 它能做什么
 
+三条流水线分别覆盖功能开发、质量门控和设计稿转代码。
+
 ```
 ┌─ Feature Pipeline ─────────────────────────────────────────────────┐
 │  analyze → design → plan → execute → archive                      │
