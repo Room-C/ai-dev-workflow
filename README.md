@@ -2,7 +2,7 @@
 
 Claude Code 插件 — 把「随意对话式编程」变成**结构化 AI 工作流**。
 
-一句 slash command 就能驱动完整的开发链路：需求分析 → 架构设计 → 任务拆解 → 逐任务实现 → 代码审查 → 提交 PR。13 个技能、6 个 Agent，即装即用。
+一句 slash command 就能驱动完整的开发链路：需求分析 → 架构设计 → 实现 → 代码审查 → 提交 PR。11 个技能、6 个 Agent，即装即用。
 
 ## 安装
 
@@ -23,7 +23,7 @@ git clone https://github.com/Room-C/ai-dev-workflow.git ~/.claude/plugins/ai-dev
 
 ```
 ┌─ Feature Pipeline ─────────────────────────────────────────────────┐
-│  analyze → design → plan → execute → archive                      │
+│  analyze → design → implement → archive                            │
 │  需求分析到代码落地，文档驱动全链路                                      │
 └────────────────────────────────────────────────────────────────────┘
 
@@ -47,19 +47,13 @@ git clone https://github.com/Room-C/ai-dev-workflow.git ~/.claude/plugins/ai-dev
 # 2. 设计架构（产出 design.md，含三视角自动审查）
 /rc:feature-design notification
 
-# 3. 拆解任务（产出 tasks.md，含依赖排序）
-/rc:feature-plan notification
+# 3. 拆解任务 + 逐任务执行（一步到位）
+/rc:feature-implement notification
 
-# 4. 逐任务执行（强制门控验证）
-/rc:feature-execute notification
-
-# 或一键批量执行
-/rc:plan-executor docs/features/notification/v1/tasks.md
-
-# 5. 合并前审查
+# 4. 合并前审查
 /rc:diff-review main
 
-# 6. 提交 + 创建 PR
+# 5. 提交 + 创建 PR
 /rc:commit main
 ```
 
@@ -71,10 +65,8 @@ git clone https://github.com/Room-C/ai-dev-workflow.git ~/.claude/plugins/ai-dev
 |------|------|------|
 | `rc:feature-analyze` | 需求分析 — 将模糊需求转化为结构化分析文档 | `analysis.md` |
 | `rc:feature-design` | 架构设计 — 含一致性、可行性、范围守卫三视角自动审查 | `design.md` |
-| `rc:feature-plan` | 任务拆解 — 按依赖排序，每条任务可独立执行 | `tasks.md` |
-| `rc:feature-execute` | 逐任务执行 — 每条任务完成后强制验证（lint/test/typecheck） | 代码变更 |
+| `rc:feature-implement` | 功能实现 — 拆解任务 + 逐任务执行，一条命令完成 plan → code | `tasks.md` + 代码变更 |
 | `rc:feature-archive` | 归档 — 更新索引、沉淀模式到 `docs/solutions/` | 归档文档 |
-| `rc:plan-executor` | 批量自动执行 — 读取 tasks.md，按依赖顺序逐条完成 | 代码变更 |
 
 ### Quality Gates — 质量门控
 
@@ -113,11 +105,11 @@ Skill 执行 → 遥测记录 → skill-evolve 分析 → known-issues 更新 / 
 | 类别 | Agent | 职责 | 调用方 |
 |------|-------|------|--------|
 | 设计类 | `analyst` | 生成设计报告（11 步流程） | `rc:feature-design` |
-| 设计类 | `decomposer` | 任务拆解（6 步流程） | `rc:feature-plan` |
+| 设计类 | `decomposer` | 任务拆解（6 步流程） | `rc:feature-implement` Phase 1 |
 | 设计类 | `coherence-reviewer` | 内部一致性审查 | `rc:feature-design` Step 3 |
 | 设计类 | `feasibility-reviewer` | 技术可行性审查 | `rc:feature-design` Step 3 |
 | 设计类 | `scope-guardian` | 范围守卫 — 防过度设计 | `rc:feature-design` Step 3 |
-| 工作流 | `task-runner` | 逐任务实现 + 门控验证 | `rc:plan-executor` |
+| 工作流 | `task-runner` | 逐任务实现 + 门控验证 | `rc:feature-implement` Phase 2 |
 
 ## 核心原则
 

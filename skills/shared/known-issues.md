@@ -12,7 +12,7 @@
 - **[2026-04-14]** Codex Companion stream 可能断开（exit code 1），确保 Bash 直调 `codex-companion.mjs` 作为 fallback，Agent 审查作为二级 fallback。
 - **[2026-04-14]** `codex:review` 默认有 `disable-model-invocation: true` 限制。调用前需 `sed` 解锁，或直接 Bash 调底层脚本。
 
-## feature-execute
+## feature-implement
 
 （暂无）
 

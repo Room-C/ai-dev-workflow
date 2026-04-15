@@ -184,8 +184,7 @@ tags: [design, ...]
 
 **本 Skill 的职责到 design.md 定稿为止。** 用户确认设计后，必须立即停止，不得继续执行以下任何操作：
 
-- ❌ 不拆解任务（那是 `rc:feature-plan` 的职责）
-- ❌ 不写代码（那是 `rc:feature-execute` 的职责）
+- ❌ 不拆解任务、不写代码（那是 `rc:feature-implement` 的职责）
 - ❌ 不添加依赖、不创建文件、不修改源代码
 - ❌ 不启动子代理去实现任何代码变更
 
@@ -196,7 +195,7 @@ tags: [design, ...]
 ```
 ✅ design.md 已定稿。
 
-📋 下一步：运行 /feature-plan {module} 将设计拆解为可执行的任务清单（tasks.md）。
+📋 下一步：运行 /feature-implement {module} 将设计拆解为任务清单并逐任务实现。
 ```
 
 ## 原则
