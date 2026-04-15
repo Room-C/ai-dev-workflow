@@ -11,9 +11,25 @@ allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Agent, WebSearch, WebFetch, 
 
 ## 工作流程
 
-### Step 1: 收集上下文 + 研究先行
+### Step 1: 收集上下文
 
-在开始设计之前，建立完整的上下文基础：
+#### 路径 A：增量模式（存在 analysis.md + .context-snapshot.md）
+
+当 `docs/features/{module}/{version}/analysis.md` 和 `.context-snapshot.md` 都存在时，采用增量研究：
+
+1. **读取 analysis.md**：作为主要输入，获取需求分析全貌
+2. **读取 .context-snapshot.md**：获取 CLAUDE.md 关键约束、已有方案、代码引用、术语表
+3. **补充性 Grep**（可选）：仅搜索 analysis.md 中提到但快照未覆盖的接口/模型/模块
+
+⏭ 跳过以下操作（信息已包含在快照和 analysis.md 中）：
+- 完整读取 CLAUDE.md
+- 搜索 `docs/solutions/`
+- 搜索 git log
+- 全量 Grep 代码库
+
+#### 路径 B：完整模式（无 analysis.md 或无快照）
+
+当直接从需求描述出发，或 `.context-snapshot.md` 不存在时，执行完整研究：
 
 1. **读取 CLAUDE.md**：了解项目架构边界、技术栈、代码规范、验证命令
 2. **读取 analysis.md**：如果存在 `docs/features/{module}/{version}/analysis.md`，作为主要输入
@@ -42,33 +58,33 @@ allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Agent, WebSearch, WebFetch, 
 
 ### Step 3: 设计审查
 
-设计报告撰写完成后，启动 3 个并行 Agent 子代理进行多视角审查：
+设计报告撰写完成后，通过条件触发 + 文件驱动方式进行多视角审查。
 
-#### 审查员 1: 一致性审查（Coherence Reviewer）
+#### Step 3.1: 评估审查触发条件
 
-检查设计文档内部一致性：
-- 数据模型字段名 ↔ 接口定义字段名 是否一致
-- 流程图实体名 ↔ 数据模型/接口定义 是否一致
-- 文件变更清单 ↔ 项目结构描述 是否一致
-- 接口定义 ↔ 流程图中的交互 是否全覆盖
+根据 design.md 内容判断需要启用哪些审查员：
 
-**特殊能力**：一致性审查员可以自动修复发现的不一致问题（safe_auto 级别修复）。
+| 审查员 | 启用条件 | 跳过条件 |
+|-------|---------|---------|
+| 一致性审查 | 设计包含数据模型或接口定义 | 纯 UI / 纯配置变更（无模型无接口） |
+| 可行性审查 | 引入新第三方依赖，或涉及跨模块变更 | 无新依赖且变更限于单模块内部 |
+| 范围守卫 | 文件变更清单 > 3 个文件 | 文件变更清单 ≤ 3 个文件 |
 
-#### 审查员 2: 可行性审查（Feasibility Reviewer）
+**原则：不确定时，启用审查。宁可多审不可漏审。**
 
-检查设计的技术可行性：
-- 依赖的基础设施是否就绪
-- 技术选型是否与现有架构兼容
-- 性能影响评估（如涉及大数据量、高并发场景）
-- 安全风险评估（如涉及用户数据、权限变更）
+如果所有审查员均被跳过（极简变更），在 Step 4 中告知用户"设计较简单，已跳过自动审查"。
 
-#### 审查员 3: 范围守卫（Scope Guardian）
+#### Step 3.2: 执行审查（文件驱动）
 
-检查设计是否越界：
-- 是否超出 analysis.md 定义的需求范围
-- 是否违反 CLAUDE.md 中的架构边界
-- "暂不实现"是否覆盖了所有不应做的功能
-- 是否存在过度设计
+为每个启用的审查员启动并行 Agent 子代理。传入参数包含：
+- `design_path`：design.md 文件路径
+- `output_dir`：与 design.md 同级的 `reviews/` 子目录（如 design.md 在 `{module}/{version}/{side}/design.md`，则为 `docs/features/{module}/{version}/{side}/reviews/`；无 side 时为 `docs/features/{module}/{version}/reviews/`）
+- 其他审查员特定参数（`claude_md_path`、`requirement_path` 等）
+
+每个审查员执行后：
+1. 自行从文件读取 design.md（不依赖主上下文传递）
+2. 将完整审查报告写入 `{output_dir}/{reviewer-name}.md`
+3. **仅返回一行摘要给主上下文**（详见各审查员 Agent 的输出规范）
 
 #### 审查置信度机制
 
@@ -82,13 +98,21 @@ allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Agent, WebSearch, WebFetch, 
 
 **跨视角加分**：如果多个审查员独立发现同一问题，置信度 +0.10。
 
+#### Step 3.3: 处理审查结果
+
+收集所有审查员的一行摘要后：
+
+1. **有 P1 发现**：读取对应 `reviews/{reviewer-name}.md` 获取详情，纳入 Step 4 呈现
+2. **仅有 P2/P3**：同样读取对应 `reviews/{reviewer-name}.md` 获取详情，纳入 Step 4 呈现；用户需在看到具体风险后才能做出有效决策
+3. **全部通过**：无需额外读取，直接进入 Step 4
+
 ### Step 4: 与用户确认
 
 向用户呈现：
 
 1. 设计报告摘要（覆盖了什么、关键决策是什么）
-2. 审查结果汇总（按严重程度排序）
-3. 自动修复列表（一致性审查员已修复的项）
+2. 审查结果摘要（一行摘要列表；如有 P1 发现，附 `reviews/` 中的详情）
+3. 自动修复列表（一致性审查员已修复的项，如有）
 4. 需要用户决策的开放问题
 
 等待用户确认后，最终定稿 design.md。
@@ -181,5 +205,6 @@ tags: [design, ...]
 2. **流程图用 Mermaid**：所有流程图使用 Mermaid 语法，节点标注使用中文
 3. **关键决策附理由**：不能只给结论，必须说明为什么这么选、替代方案是什么
 4. **研究先行**：先搜索 `docs/solutions/` 和代码库，避免重复设计已有能力
-5. **审查是强制的**：Step 3 的三视角审查不可跳过，是设计质量的最后防线
+5. **审查是强制的**：Step 3 的多视角审查不可跳过（除非触发条件判定全部跳过），是设计质量的最后防线
 6. **用中文输出**：所有文档内容使用中文
+7. **上下文高效**：利用 `.context-snapshot.md` 避免重复研究；审查结果通过文件传递，主上下文只保留摘要行
