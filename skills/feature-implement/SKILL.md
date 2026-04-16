@@ -1,7 +1,7 @@
 ---
 name: rc:feature-implement
 description: 功能实现 — 将设计报告拆解为任务清单并逐任务自主执行，一条命令完成从 plan 到 code 的全流程。
-argument-hint: "<module> [design-path] [--skip N] [--start-from N]"
+argument-hint: "<module> [design-path] [--skip N,M,...] [--start-from N]"
 allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Agent, AskUserQuestion
 ---
 
@@ -171,14 +171,14 @@ prompt: 包含以下内容——
 - 操作同一文件的任务不能并行
 - 并行任务全部完成后，再统一更新状态
 
-#### 更新状态 → ✅
+#### 更新状态 → 🔧
 
 任务实现完成后（无论是主代理还是子代理执行的）：
-1. 将任务状态从 `⬜` 直接改为 `✅`
+1. 将任务状态从 `⬜` 改为 `🔧`（已实现，等待验证）
 2. 同步更新所有子任务的状态标记
 3. 更新"执行顺序"章节中的标记
 
-注意：解析时识别所有 4 种状态（⬜🔧✅⚠️），但本 Skill 只写入 ⬜ 和 ✅，减少 tasks.md 编辑次数。
+注意：只有该阶段批量验证（Step 2.3）通过后，才将 `🔧` 统一更新为 `✅`。验证失败则更新为 `⚠️`。本 Skill 写入 ⬜、🔧、✅ 和 ⚠️ 四种状态。
 
 ### Step 2.3: 批量验证
 
@@ -197,7 +197,8 @@ prompt: 包含以下内容——
 **每个阶段完成后**：
 1. 运行从 CLAUDE.md 读取的构建验证命令
 2. 运行从 CLAUDE.md 读取的测试验证命令
-3. 向用户汇报验证结果和变更摘要
+3. 验证通过 → 将该阶段所有 `🔧` 任务状态更新为 `✅`
+4. 向用户汇报验证结果和变更摘要
 
 **验证失败处理**：
 1. 分析错误信息，尝试自行修复（最多 2 次）
@@ -287,6 +288,22 @@ Tasks [N]-[M]/[Total] from [tasks.md 路径]
    - 运行 /rc:commit-pr 提交代码并创建 PR
    - 运行 /rc:feature-archive {module} 归档关键决策和经验教训
 ```
+
+### Step 3.3: 记录执行遥测
+
+执行结束时（无论成功、部分完成还是失败），追加一条遥测记录：
+
+```bash
+RECORD_SCRIPT=$(ls "$HOME/.claude/plugins/cache/ai-dev-workflow"/*/*/skills/shared/scripts/record-outcome.sh 2>/dev/null | tail -1)
+if [ -z "$RECORD_SCRIPT" ]; then
+  for candidate in "skills/shared/scripts/record-outcome.sh" "dev_workflow/skills/shared/scripts/record-outcome.sh"; do
+    [ -f "$candidate" ] && RECORD_SCRIPT="$candidate" && break
+  done
+fi
+bash "$RECORD_SCRIPT" feature-implement <status> [failure-step] [failure-reason]
+```
+
+如果 `RECORD_SCRIPT` 不存在，跳过遥测（不阻塞主流程）。
 
 ---
 
