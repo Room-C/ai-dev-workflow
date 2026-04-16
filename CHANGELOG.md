@@ -1,6 +1,6 @@
 # Changelog
 
-## 2.2.0 — 2026-04-16
+## 2.1.3 — 2026-04-16
 
 ### Changed
 - **Feature Pipeline**: 合并 `rc:feature-plan` + `rc:plan-executor` 为 `rc:feature-implement`，一条命令完成从任务拆解到代码实现的全流程（内部仍分 Phase 1: Plan → Phase 2: Execute）。支持断点续执行——重新调用时自动检测已有 tasks.md 并跳过 Phase 1。
