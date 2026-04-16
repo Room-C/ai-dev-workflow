@@ -6,7 +6,7 @@
 #   record-outcome.sh <skill-name> <status> [failure-step] [failure-reason] [fallback-used]
 #
 # 参数:
-#   skill-name      技能名称，如 diff-review、feature-execute
+#   skill-name      技能名称，如 diff-review、feature-implement
 #   status          执行状态: success | partial | failed
 #   failure-step    (可选) 失败发生在哪一步，如 3a、Step4
 #   failure-reason  (可选) 失败原因简述，如 codex_stream_disconnected
@@ -18,7 +18,7 @@
 # 示例:
 #   record-outcome.sh diff-review success
 #   record-outcome.sh diff-review partial 3a codex_stream_disconnected 3b_agent
-#   record-outcome.sh feature-execute failed Step4 lint_verification_failed
+#   record-outcome.sh feature-implement failed Step4 lint_verification_failed
 
 set -euo pipefail
 
