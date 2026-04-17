@@ -38,7 +38,11 @@ allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Agent, AskUserQuestion
 
 ```bash
 REVIEW_DIR="docs/develop/reviews/$(date +%Y-%m-%d)"
-mkdir -p "$REVIEW_DIR"
+if ! mkdir -p "$REVIEW_DIR"; then
+  echo "ERROR: cannot create $REVIEW_DIR (cwd=$PWD, exit=$?). Aborting review." >&2
+  exit 1
+fi
+[ -w "$REVIEW_DIR" ] || { echo "ERROR: $REVIEW_DIR is not writable."; exit 1; }
 ```
 
 报告文件名：`<current-branch>-vs-<target-branch>.md`（`/` 替换为 `-`）。
