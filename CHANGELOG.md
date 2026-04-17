@@ -1,5 +1,19 @@
 # Changelog
 
+## 2.2.0 — 2026-04-17
+
+### Changed
+- **架构重构**: 简化 Skill 结构并引入 Agent 分层 — Workflow Agent（task-runner、pr-reviewer、diff-reviewer）从 SKILL.md 中解耦为独立 `agents/` 文件，Skill 只负责调度，Agent 负责执行逻辑，职责边界更清晰。
+
+### Fixed
+- **rc:diff-review**: Critical — 修复 Codex 路径发现逻辑（`find .` 搜不到插件缓存），改为 `ls` 通配匹配；`sed` 解锁行错误正则导致注释未移除。
+- **rc:review-pr**: High — `gh api` 调用未承接返回值、`git pull/push` 无错误捕获；`fetch_or_stop` 调用处承接返回值修复；`osascript` 通知消息静态化，避免变量注入破坏解析；Check Run annotations 循环中双处下标 bug。
+- **rc:commit-pr**: 对 `xargs` 添加非空守卫，避免空列表时意外删除；secrets 检测逻辑覆盖已暂存变更（`git diff --cached`），防止带密钥的暂存文件漏检。
+- **Skills 通用**: High — `mkdir -p` 缺失导致状态文件写入失败；Medium — secrets 验证路径与遥测记录静默失败。
+
+### Docs
+- **known-issues**: 沉淀 PR #6 三轮 review 教训 — 记录 Bash 静默失败的五类根因与防范模式。
+
 ## 2.1.3 — 2026-04-16
 
 ### Changed
