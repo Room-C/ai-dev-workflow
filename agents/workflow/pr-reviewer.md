@@ -39,8 +39,17 @@ tools: Read, Write, Edit, Glob, Grep, Bash
 
 首轮 (`first_review`) 跳过本步骤。
 
-1. 检查 PR 状态：`gh pr view {pr_number} --json state -q '.state'`
-   - 若非 `OPEN` → 发送通知 + 返回 `REVIEW_STOPPED`
+1. 检查 PR 状态：
+   ```bash
+   STATE=$(gh pr view "{pr_number}" --json state -q '.state' 2>&1) || {
+     # 详细错误走 stderr 供 Claude 读取；通知消息保持静态，避免 $STATE 内的引号/元字符破坏 osascript 解析
+     echo "ERROR: gh pr view failed: $STATE" >&2
+     osascript -e 'display notification "PR 状态检查失败（详见日志）" with title "Review Agent"'
+     return REVIEW_STOPPED
+   }
+   [ -z "$STATE" ] && return REVIEW_STOPPED  # 空返回视为调用失败
+   ```
+   若 `STATE` 非 `OPEN` → 发送通知 + 返回 `REVIEW_STOPPED`
 2. 读取 `state_file`，`round += 1` 后写回
 3. 若 `round > maxRounds` → 发送通知"已达最大审查轮次" + 返回 `REVIEW_STOPPED`
 
@@ -48,19 +57,49 @@ tools: Read, Write, Edit, Glob, Grep, Bash
 
 **首轮模式**：只需 `gh pr diff {pr_number}`。跳过 prior comments/annotations 获取（PR 刚建，不存在历史反馈）。
 
-**后续模式**：获取以下全部：
-1. `gh pr diff {pr_number}` 获取最新 diff
-2. `gh api repos/{repo}/pulls/{pr_number}/comments --paginate` — inline comments
-3. `gh api repos/{repo}/pulls/{pr_number}/reviews --paginate` — review 级反馈
+**后续模式**：获取以下全部。**每个 `gh api` 调用都必须检查 exit status**，区分"0 条结果"与"调用失败"（后者意味着 rate limit、token 过期或网络问题，不能当作 clean 处理）：
+
+```bash
+# 封装：失败时将错误写 stderr 并返回 1，由调用方承接
+fetch_or_stop() {
+  local out
+  out=$(gh api "$@" 2>&1) || {
+    echo "ERROR: gh api failed for $*: $out" >&2
+    return 1
+  }
+  echo "$out"
+}
+```
+
+所有调用必须用 `VAR=$(...) || return REVIEW_STOPPED` 形式承接返回值，否则封装形同虚设：
+
+1. 获取最新 diff：
+   ```bash
+   DIFF=$(gh pr diff "{pr_number}" 2>&1) || { echo "ERROR: gh pr diff failed: $DIFF" >&2; return REVIEW_STOPPED; }
+   ```
+2. Inline comments：
+   ```bash
+   COMMENTS=$(fetch_or_stop repos/{repo}/pulls/{pr_number}/comments --paginate) || return REVIEW_STOPPED
+   ```
+3. Review 级反馈：
+   ```bash
+   REVIEWS=$(fetch_or_stop repos/{repo}/pulls/{pr_number}/reviews --paginate) || return REVIEW_STOPPED
+   ```
 4. Check Run Annotations：
    ```bash
-   gh api repos/{repo}/commits/{HEAD_SHA}/check-runs --paginate \
-     -q '.check_runs[] | select(.conclusion == "failure" or .conclusion == "action_required")'
+   CHECK_RUNS=$(fetch_or_stop repos/{repo}/commits/{HEAD_SHA}/check-runs --paginate \
+     -q '.check_runs[] | select(.conclusion == "failure" or .conclusion == "action_required")') \
+     || return REVIEW_STOPPED
    # 对每个失败的 check run 获取 annotations
-   gh api repos/{repo}/check-runs/{CHECK_RUN_ID}/annotations --paginate
+   for CHECK_RUN_ID in $(echo "$CHECK_RUNS" | jq -r '.id'); do
+     ANNOTATIONS=$(fetch_or_stop repos/{repo}/check-runs/"$CHECK_RUN_ID"/annotations --paginate) \
+       || return REVIEW_STOPPED
+     # 处理 annotations，仅纳入 warning 和 failure 级别，忽略 notice
+   done
    ```
-   仅纳入 `warning` 和 `failure` 级别，忽略 `notice`。
 5. 对比 HEAD SHA，若自上次 push 以来无新 commit → 返回 `REVIEW_SKIPPED`
+
+**关键：** 任何 `gh api` 调用失败必须返回 `REVIEW_STOPPED`，绝不能把失败当作"无 comments" → 错误地返回 `REVIEW_CLEAN` → 在有未解决 🔴 的 PR 上发"审查通过"通知。
 
 ## Step 2: 审查 Diff
 
@@ -107,7 +146,14 @@ tools: Read, Write, Edit, Glob, Grep, Bash
 | `advisory` | 信息性、风格偏好 | 不修复不回复 |
 
 执行修复：
-1. `git checkout {head_branch} && git pull origin {head_branch}`
+1. 切到 head branch 并同步，**失败必须终止**（防止在陈旧 base 上做修复）：
+   ```bash
+   git checkout "{head_branch}" || { echo "ERROR: checkout failed"; return REVIEW_MANUAL; }
+   git pull --ff-only origin "{head_branch}" || {
+     echo "ERROR: git pull --ff-only failed; refusing to apply fixes onto stale base."
+     return REVIEW_STOPPED
+   }
+   ```
 2. 逐个修复 `safe_auto` / `gated_auto` 项，保持最小化
 3. 修复后回复对应 comment：
    - `safe_auto` → `✅ 已自动修复：<简述>`
@@ -128,7 +174,13 @@ tools: Read, Write, Edit, Glob, Grep, Bash
 3. 全部通过后：
    - `git add <具体文件>`（不用 `git add -A`）
    - `git commit -m "fix(review): <描述>"`
-   - `git push origin {head_branch}`
+   - **Push 失败必须返回 `REVIEW_MANUAL`**（防止假报告"已修复"）：
+     ```bash
+     git push origin "{head_branch}" || {
+       echo "ERROR: push rejected (branch protection / non-fast-forward / auth)"
+       return REVIEW_MANUAL
+     }
+     ```
 4. 若全是 `manual` 项 → 返回 `REVIEW_MANUAL`；否则返回 `REVIEW_FIXED`
 
 ## Step 6: 完成判定（仅 `follow_up` 模式）
