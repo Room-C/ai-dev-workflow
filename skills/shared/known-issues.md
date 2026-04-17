@@ -12,6 +12,7 @@
   - **prose 条件 vs 代码守卫脱节** — 文字说"If X, do Y"，bash 块里却无条件执行 Y。✘ `echo "$X" | xargs cmd` ✓ `[ -n "$X" ] && echo "$X" | xargs cmd`
   - **跨语言转义假设** — `osascript -e "...\"$VAR\"..."` 在 `$VAR` 含引号/元字符时破坏 AppleScript 解析。✘ 嵌入外部输出 ✓ 通知消息静态化，详情走 stderr
   - **函数封装但调用不承接** — 定义了 `fetch_or_stop() { ...; return 1; }`，调用写成 `fetch_or_stop <args>` 而非 `VAR=$(fetch_or_stop <args>) \|\| return REVIEW_STOPPED`。✘ 示意性调用 ✓ 可直接运行的完整形式
+  - **循环内捕获变量覆盖** — `for x in ...; do VAR=$(cmd $x); done` 每次迭代都覆盖 VAR，循环结束后只剩最后一次的结果。✘ 捕获供后续处理 ✓ 让命令直接输出让上层 Agent 读累积流
   - **规避方式**：写 bash 时问自己"LLM 把这行原样执行会不会出问题"，而非"读者会理解我的意图"。
 
 ---

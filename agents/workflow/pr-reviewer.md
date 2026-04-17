@@ -91,11 +91,15 @@ fetch_or_stop() {
      -q '.check_runs[] | select(.conclusion == "failure" or .conclusion == "action_required")') \
      || return REVIEW_STOPPED
    # 对每个失败的 check run 获取 annotations
-   for CHECK_RUN_ID in $(echo "$CHECK_RUNS" | jq -r '.id'); do
-     ANNOTATIONS=$(fetch_or_stop repos/{repo}/check-runs/"$CHECK_RUN_ID"/annotations --paginate) \
-       || return REVIEW_STOPPED
-     # 处理 annotations，仅纳入 warning 和 failure 级别，忽略 notice
-   done
+   # - [ -n ] 守卫避免空输入导致 jq 解析错误
+   # - 不把 annotations 捕获到变量（循环内赋值会只保留最后一次迭代），让输出直接累积到 stderr/stdout 供 Agent 读取
+   if [ -n "$CHECK_RUNS" ]; then
+     for CHECK_RUN_ID in $(echo "$CHECK_RUNS" | jq -r '.id'); do
+       fetch_or_stop repos/{repo}/check-runs/"$CHECK_RUN_ID"/annotations --paginate \
+         || return REVIEW_STOPPED
+     done
+   fi
+   # 处理上述累积输出的 annotations，仅纳入 warning 和 failure 级别，忽略 notice
    ```
 5. 对比 HEAD SHA，若自上次 push 以来无新 commit → 返回 `REVIEW_SKIPPED`
 
