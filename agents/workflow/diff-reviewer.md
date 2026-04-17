@@ -49,7 +49,19 @@ tools: Read, Write, Glob, Grep, Bash, Skill, Agent
 ```bash
 for cmd in review adversarial-review; do
   CMD_FILE="$HOME/.claude/plugins/marketplaces/openai-codex/plugins/codex/commands/${cmd}.md"
-  [ -f "$CMD_FILE" ] && sed -i '' 's/disable-model-invocation: true/disable-model-invocation: false/' "$CMD_FILE"
+  if [ ! -f "$CMD_FILE" ]; then
+    echo "WARN: Codex command file missing: $CMD_FILE — nested invocation may be blocked." >&2
+    continue
+  fi
+  if ! grep -q 'disable-model-invocation: true' "$CMD_FILE"; then
+    # 已解锁，或 key 被重命名（插件升级风险）
+    continue
+  fi
+  # 用 sed -i.bak 跨平台兼容（BSD/GNU），再删除备份
+  if ! sed -i.bak 's/disable-model-invocation: true/disable-model-invocation: false/' "$CMD_FILE"; then
+    echo "ERROR: failed to patch $CMD_FILE (sed exit $?) — Codex Skill call will likely fail." >&2
+  fi
+  rm -f "${CMD_FILE}.bak"
 done
 ```
 
@@ -66,9 +78,18 @@ Skill("codex:adversarial-review", "--wait --base <diff_range 起点> Focus on: <
 Skill 失败则降级为 Bash 直调：
 
 ```bash
-CODEX_SCRIPT=$(ls "$HOME/.claude/plugins/cache/openai-codex/codex"/*/scripts/codex-companion.mjs 2>/dev/null | tail -1)
-node "$CODEX_SCRIPT" <review|adversarial-review> --wait --base <base> [focus text]
+CODEX_SCRIPT=$(ls "$HOME/.claude/plugins/cache/openai-codex/codex"/*/scripts/codex-companion.mjs 2>/dev/null | sort -V | tail -1)
+if [ -z "$CODEX_SCRIPT" ] || [ ! -f "$CODEX_SCRIPT" ]; then
+  echo "WARN: Codex companion script not found under \$HOME/.claude/plugins/cache/openai-codex — falling back to Agent path (Step 1b)." >&2
+  # 显式触发 Step 1b 降级，不要继续执行 node
+else
+  node "$CODEX_SCRIPT" <review|adversarial-review> --wait --base <base> [focus text] || {
+    echo "WARN: Codex script invocation failed (exit $?); falling back to Agent path." >&2
+  }
+fi
 ```
+
+`sort -V` 保证版本选择确定性（避免 ls 词典序选到旧版）。发现失败必须显式触发 Step 1b，不能让 `node ""` 产生误导性错误。
 
 成功则将原始输出写入 `<output_dir>/review-round-<round>.md`，`mode: "codex"`。
 
