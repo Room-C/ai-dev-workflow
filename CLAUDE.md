@@ -29,7 +29,7 @@ All skills follow these principles:
 
 ```bash
 # 定位遥测脚本
-RECORD_SCRIPT=$(ls "$HOME/.claude/plugins/cache/ai-dev-workflow"/*/*/skills/shared/scripts/record-outcome.sh 2>/dev/null | tail -1)
+RECORD_SCRIPT=$(ls "$HOME/.claude/plugins/cache/ai-dev-workflow"/*/*/skills/shared/scripts/record-outcome.sh 2>/dev/null | sort -V | tail -1)
 if [ -z "$RECORD_SCRIPT" ]; then
   # 本地开发 fallback
   for candidate in "skills/shared/scripts/record-outcome.sh" "dev_workflow/skills/shared/scripts/record-outcome.sh"; do
@@ -37,8 +37,13 @@ if [ -z "$RECORD_SCRIPT" ]; then
   done
 fi
 
-# 调用
-bash "$RECORD_SCRIPT" <skill-name> <status> [failure-step] [failure-reason] [fallback-used]
+# 调用（必须检查脚本存在，否则 bash "" 会静默 no-op，skill-evolve 数据出现空洞）
+if [ -z "$RECORD_SCRIPT" ] || [ ! -f "$RECORD_SCRIPT" ]; then
+  echo "WARN: telemetry script not found in cache or local fallbacks; record skipped." >&2
+else
+  bash "$RECORD_SCRIPT" <skill-name> <status> [failure-step] [failure-reason] [fallback-used] || \
+    echo "WARN: telemetry call exited non-zero — record may be incomplete." >&2
+fi
 ```
 
 ### 状态定义

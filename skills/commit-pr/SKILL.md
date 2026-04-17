@@ -41,8 +41,21 @@ Check the context above:
 
 ### Step 1 — Stage Changes
 
-- First check for secret files (`.env`, credentials, tokens) in the diff. If found, warn the user and exclude them via `git reset HEAD <file>` after staging.
-- Run `git add -A` to stage all changes, then unstage any secret files identified above.
+1. Detect secret files in the diff:
+   ```bash
+   SECRETS=$(git diff --name-only | grep -E '(^|/)(\.env|.*\.pem|.*credentials.*|.*token.*)$' || true)
+   ```
+2. Run `git add -A` to stage all changes.
+3. If `$SECRETS` is non-empty, unstage them and **verify**:
+   ```bash
+   echo "$SECRETS" | xargs -I{} git reset HEAD -- {} 2>/dev/null
+   STILL_STAGED=$(git diff --cached --name-only | grep -E '(^|/)(\.env|.*\.pem|.*credentials.*|.*token.*)$' || true)
+   if [ -n "$STILL_STAGED" ]; then
+     echo "ABORT: secret files still staged after reset: $STILL_STAGED" >&2
+     exit 1
+   fi
+   ```
+   Warn the user about the excluded files before committing.
 
 ### Step 2 — Commit
 
