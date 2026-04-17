@@ -65,7 +65,7 @@ allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Agent, AskUserQuestion, mcp_
 - **布局模型** — 每个页面的布局层次（ScrollView / Stack / List 等）
 - **设计 Token 映射** — 将设计稿中的值映射到已有 Token（颜色名 → 变量名）
 
-在分析时，同时参考步骤 0 读取的设计规范文档中的 Token 命名规范，确保代码中使用规范化的 Token 名称而非硬编码值。
+在分析时，参考项目 CLAUDE.md 中定义的 Token 命名规范（若项目指定了设计规范文档则一并参考），确保代码中使用规范化的 Token 名称而非硬编码值。
 
 ### 步骤 3：检查现有代码
 
