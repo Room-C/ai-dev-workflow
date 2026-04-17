@@ -50,10 +50,15 @@ pr_number, repo, head_branch, base_branch
 | `REVIEW_FIXED` | 创建状态文件 + 创建 Cron 任务（见 Step 4） |
 | `REVIEW_MANUAL` | 创建状态文件 + 创建 Cron 任务 |
 
-状态文件格式：
+状态文件格式（写入失败必须终止，否则 Cron 会陷入死循环）：
 
 ```bash
-echo '{"pr":<N>,"round":1,"maxRounds":6}' > /tmp/.review-state-<N>.json
+STATE_FILE="/tmp/.review-state-<N>.json"
+if ! printf '%s' '{"pr":<N>,"round":1,"maxRounds":6}' > "$STATE_FILE"; then
+  echo "ERROR: cannot write $STATE_FILE — refusing to schedule Cron without durable state." >&2
+  exit 1
+fi
+[ -s "$STATE_FILE" ] || { echo "ERROR: state file empty after write."; exit 1; }
 ```
 
 ## Step 4: 创建跟踪 Cron（仅 Step 3 需要时）
