@@ -48,7 +48,7 @@ Check the context above:
 2. Run `git add -A` to stage all changes.
 3. If `$SECRETS` is non-empty, unstage them and **verify**:
    ```bash
-   echo "$SECRETS" | xargs -I{} git reset HEAD -- {} 2>/dev/null
+   [ -n "$SECRETS" ] && echo "$SECRETS" | xargs -I{} git reset HEAD -- {} 2>/dev/null
    STILL_STAGED=$(git diff --cached --name-only | grep -E '(^|/)(\.env|.*\.pem|.*credentials.*|.*token.*)$' || true)
    if [ -n "$STILL_STAGED" ]; then
      echo "ABORT: secret files still staged after reset: $STILL_STAGED" >&2
