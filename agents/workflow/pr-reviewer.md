@@ -42,7 +42,9 @@ tools: Read, Write, Edit, Glob, Grep, Bash
 1. 检查 PR 状态：
    ```bash
    STATE=$(gh pr view "{pr_number}" --json state -q '.state' 2>&1) || {
-     osascript -e "display notification \"gh pr view failed: $STATE\" with title \"Review Agent\""
+     # 详细错误走 stderr 供 Claude 读取；通知消息保持静态，避免 $STATE 内的引号/元字符破坏 osascript 解析
+     echo "ERROR: gh pr view failed: $STATE" >&2
+     osascript -e 'display notification "PR 状态检查失败（详见日志）" with title "Review Agent"'
      return REVIEW_STOPPED
    }
    [ -z "$STATE" ] && return REVIEW_STOPPED  # 空返回视为调用失败
