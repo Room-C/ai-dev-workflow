@@ -60,7 +60,7 @@ tools: Read, Write, Edit, Glob, Grep, Bash
 **后续模式**：获取以下全部。**每个 `gh api` 调用都必须检查 exit status**，区分"0 条结果"与"调用失败"（后者意味着 rate limit、token 过期或网络问题，不能当作 clean 处理）：
 
 ```bash
-# 示例封装：失败时返回 REVIEW_STOPPED 而非静默当空
+# 封装：失败时将错误写 stderr 并返回 1，由调用方承接
 fetch_or_stop() {
   local out
   out=$(gh api "$@" 2>&1) || {
@@ -71,17 +71,32 @@ fetch_or_stop() {
 }
 ```
 
-1. `gh pr diff {pr_number}` 获取最新 diff（失败 → `REVIEW_STOPPED`）
-2. `fetch_or_stop repos/{repo}/pulls/{pr_number}/comments --paginate` — inline comments
-3. `fetch_or_stop repos/{repo}/pulls/{pr_number}/reviews --paginate` — review 级反馈
+所有调用必须用 `VAR=$(...) || return REVIEW_STOPPED` 形式承接返回值，否则封装形同虚设：
+
+1. 获取最新 diff：
+   ```bash
+   DIFF=$(gh pr diff "{pr_number}" 2>&1) || { echo "ERROR: gh pr diff failed: $DIFF" >&2; return REVIEW_STOPPED; }
+   ```
+2. Inline comments：
+   ```bash
+   COMMENTS=$(fetch_or_stop repos/{repo}/pulls/{pr_number}/comments --paginate) || return REVIEW_STOPPED
+   ```
+3. Review 级反馈：
+   ```bash
+   REVIEWS=$(fetch_or_stop repos/{repo}/pulls/{pr_number}/reviews --paginate) || return REVIEW_STOPPED
+   ```
 4. Check Run Annotations：
    ```bash
-   fetch_or_stop repos/{repo}/commits/{HEAD_SHA}/check-runs --paginate \
-     -q '.check_runs[] | select(.conclusion == "failure" or .conclusion == "action_required")'
+   CHECK_RUNS=$(fetch_or_stop repos/{repo}/commits/{HEAD_SHA}/check-runs --paginate \
+     -q '.check_runs[] | select(.conclusion == "failure" or .conclusion == "action_required")') \
+     || return REVIEW_STOPPED
    # 对每个失败的 check run 获取 annotations
-   fetch_or_stop repos/{repo}/check-runs/{CHECK_RUN_ID}/annotations --paginate
+   for CHECK_RUN_ID in $(echo "$CHECK_RUNS" | jq -r '.id'); do
+     ANNOTATIONS=$(fetch_or_stop repos/{repo}/check-runs/"$CHECK_RUN_ID"/annotations --paginate) \
+       || return REVIEW_STOPPED
+     # 处理 annotations，仅纳入 warning 和 failure 级别，忽略 notice
+   done
    ```
-   仅纳入 `warning` 和 `failure` 级别，忽略 `notice`。
 5. 对比 HEAD SHA，若自上次 push 以来无新 commit → 返回 `REVIEW_SKIPPED`
 
 **关键：** 任何 `gh api` 调用失败必须返回 `REVIEW_STOPPED`，绝不能把失败当作"无 comments" → 错误地返回 `REVIEW_CLEAN` → 在有未解决 🔴 的 PR 上发"审查通过"通知。
