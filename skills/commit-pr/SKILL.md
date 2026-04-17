@@ -11,7 +11,6 @@ allowed-tools: Bash, Read, Glob, Grep
 
 ## Context
 
-- Current git status: !`git status`
 - Current git diff (staged and unstaged): !`git diff HEAD`
 - Current branch: !`git branch --show-current`
 - Recent commits (for message style): !`git log --oneline -10`
@@ -42,8 +41,8 @@ Check the context above:
 
 ### Step 1 — Stage Changes
 
-- Run `git add -A` to stage all changes.
-- Do NOT stage files that look like secrets (`.env`, credentials, tokens). If found, warn the user and exclude them.
+- First check for secret files (`.env`, credentials, tokens) in the diff. If found, warn the user and exclude them via `git reset HEAD <file>` after staging.
+- Run `git add -A` to stage all changes, then unstage any secret files identified above.
 
 ### Step 2 — Commit
 
