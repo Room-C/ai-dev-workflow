@@ -18,7 +18,7 @@ All skills follow these principles:
 - **Document Chain**: Each document has a single responsibility — analysis.md (what), design.md (how), tasks.md (steps)
 - **Forced Gates**: Verification must pass before marking tasks complete
 - **Knowledge Compounding**: Patterns discovered during review/archive are persisted to `docs/solutions/` using dual-track schema (Bug Track / Knowledge Track)
-- **Confidence Gating**: Review findings below 0.50 confidence are discarded; 0.50-0.59 only P1; ≥ 0.60 kept
+- **Confidence Gating**: Review findings below 0.60 confidence are discarded; ≥ 0.60 kept. Multi-perspective consensus (≥ 2 reviewers find the same issue) is treated as high confidence and always reported.
 - **Autofix Classification**: safe_auto (direct fix) / gated_auto (fix + confirm) / manual (report only) / advisory (log only)
 
 ## Execution Telemetry

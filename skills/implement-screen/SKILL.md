@@ -44,10 +44,6 @@ allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Agent, AskUserQuestion, mcp_
 
 - 读取项目 `CLAUDE.md` 获取架构约束和代码规范
 - 确认目标平台和目标目录
-- 读取设计规范文档（如果存在）：
-  - `docs/design/pencil/pactpilot-design-spec.md` — 视觉规范（token 参考）
-  - `docs/design/pencil/pactpilot-interaction-spec.md` — 交互规范
-  - `docs/design/pencil/product-spec.md` — 产品规范
 
 ### 步骤 1：读取设计稿
 
@@ -69,7 +65,7 @@ allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Agent, AskUserQuestion, mcp_
 - **布局模型** — 每个页面的布局层次（ScrollView / Stack / List 等）
 - **设计 Token 映射** — 将设计稿中的值映射到已有 Token（颜色名 → 变量名）
 
-在分析时，同时参考 `pactpilot-design-spec.md` 中的 Token 命名规范，确保代码中使用规范化的 Token 名称而非硬编码值。
+在分析时，参考项目 CLAUDE.md 中定义的 Token 命名规范（若项目指定了设计规范文档则一并参考），确保代码中使用规范化的 Token 名称而非硬编码值。
 
 ### 步骤 3：检查现有代码
 
@@ -79,11 +75,19 @@ allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Agent, AskUserQuestion, mcp_
 
 ### 步骤 4：实现代码
 
-按以下顺序实现：
+**单页面**：直接在主上下文中实现。
 
-1. **共享组件**（如果有多页面复用的组件）
-2. **页面专属组件**
-3. **页面组合**
+**多页面（≥ 2）**：使用 Sub Agent 并行实现，避免上下文溢出。
+
+1. 主上下文先实现**共享组件**（步骤 2 识别的多页面复用组件）
+2. 为每个页面启动一个并行 Sub Agent，传入：
+   - 该页面的设计数据（节点树、布局、截图路径）
+   - 共享组件的文件路径清单（已由主上下文实现）
+   - 平台规范和 Token 映射
+3. 每个 Sub Agent 独立完成页面专属组件 + 页面组合，写入文件
+4. Sub Agent 仅返回一行摘要：`<page-name>: <文件数> files, <状态>`
+
+实现顺序（无论单页/多页）：共享组件 → 页面专属组件 → 页面组合
 
 #### iOS / SwiftUI 实现规范
 
@@ -122,66 +126,14 @@ allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Agent, AskUserQuestion, mcp_
 
 ## 输出规格
 
-```markdown
-# 页面实现报告
+报告须包含以下要点（格式自由组织）：
 
-## 概览
-- 设计稿: <pen-file>
-- 平台: iOS / Flutter
-- 目标目录: <target-dir>
-- 页面数: N
-
-## 已实现页面
-
-### <page-name-1>
-
-**设计截图:**
-[Pencil MCP 截图]
-
-**组件层次:**
-```
-PageView
-├── HeaderSection
-│   ├── BackButton
-│   └── TitleLabel
-├── ContentScrollView
-│   ├── InfoCard
-│   └── ActionSection
-└── BottomBar
-```
-
-**实现文件:**
-| 文件 | 类型 | 说明 |
-|------|------|------|
-| Views/SettingsView.swift | 页面 | 主页面视图 |
-| Views/Components/InfoCard.swift | 组件 | 信息卡片 |
-
-**Token 映射:**
-| 设计稿值 | Token 名称 | 状态 |
-|----------|-----------|------|
-| #0F172A | Color.background | ✅ 已有 |
-| #34D399 | Color.primary | ✅ 已有 |
-| 14px | Font.caption | ⚠️ 近似 (现有 13px) |
-
-### <page-name-2>
-...
-
-## 共享组件
-| 组件 | 使用页面 | 文件 |
-|------|---------|------|
-| InfoCard | page-1, page-2 | Components/InfoCard.swift |
-
-## 构建状态
-- ✅ 编译通过 / ❌ 编译失败（附错误信息）
-
-## 新增 Token 建议
-| 值 | 建议名称 | 使用场景 |
-|----|---------|---------|
-| 14px | Font.caption | 辅助说明文字 |
-
-## 下一步
-- 运行 `rc:verify-screen` 对比实现与设计稿
-```
+- **概览**：设计稿路径、平台、目标目录、页面数
+- **每个页面**：设计截图、组件层次、实现文件清单
+- **共享组件**：组件名、使用页面、文件路径
+- **Token 映射**：设计稿值 → Token 名称，标注已有/近似/缺失
+- **构建状态**：编译通过或失败（附错误信息）
+- **下一步**：建议运行 `rc:verify-screen` 对比实现与设计稿
 
 ## 原则
 

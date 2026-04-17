@@ -55,91 +55,12 @@ allowed-tools: Bash, Read, Write, Edit, Glob, Grep
 
 将开发过程中发现的可复用知识写入 `docs/solutions/`，使用 compound-engineering 双轨 Schema。
 
-#### 双轨 Schema
+**Schema、category 映射、文件命名、沉淀门槛详见 `skills/shared/compound-schema.md`**（避免与 `rc:diff-review` 重复定义）。
 
-**Bug Track**（问题修复类）
+本 Skill 只做额外强调：
 
-适用于：构建错误、运行时错误、配置错误、集成问题
-
-```markdown
----
-title: [问题标题]
-date: YYYY-MM-DD
-category: build_error | runtime_error | config_error | integration_issue
-severity: P0 | P1 | P2
-tags: [相关标签]
----
-
-# [问题标题]
-
-## 症状
-[错误信息、复现步骤]
-
-## 根因
-[为什么会发生]
-
-## 修复
-[怎么修的，附关键代码片段]
-
-## 预防
-[怎么避免再次发生]
-```
-
-**Knowledge Track**（知识沉淀类）
-
-适用于：最佳实践、工作流改进、架构决策、性能优化
-
-```markdown
----
-title: [知识标题]
-date: YYYY-MM-DD
-category: best_practice | workflow_issue | architecture | performance
-tags: [相关标签]
----
-
-# [知识标题]
-
-## 背景
-[为什么需要这个知识]
-
-## 方案
-[具体做法，附代码示例或配置]
-
-## 适用条件
-[什么场景下使用]
-
-## 注意事项
-[使用时需要注意的陷阱]
-```
-
-#### Category → 目录映射
-
-| category 值 | 目录 |
-|-------------|------|
-| `build_error` | `docs/solutions/build/` |
-| `runtime_error` | `docs/solutions/runtime/` |
-| `config_error` | `docs/solutions/config/` |
-| `integration_issue` | `docs/solutions/integration/` |
-| `best_practice` | `docs/solutions/best-practices/` |
-| `workflow_issue` | `docs/solutions/workflow/` |
-| `architecture` | `docs/solutions/architecture/` |
-| `performance` | `docs/solutions/performance/` |
-
-#### 文件命名
-
-格式：`YYYY-MM-DD-{kebab-case-title}.md`
-
-示例：`2026-04-10-celery-task-timeout-fix.md`
-
-#### 沉淀判断标准
-
-不是所有开发过程都需要沉淀。只沉淀满足以下条件之一的内容：
-
-- 花了超过 30 分钟排查的问题
-- 需要搜索外部文档才解决的问题
-- 违反直觉的行为或配置
-- 未来大概率会再次遇到的模式
-- 架构层面的设计决策及理由
+- 归档阶段沉淀的典型素材是"本次开发过程中意外遇到的问题"和"验证后确认的最佳实践"
+- **一次归档最多写 3 条 solution**，超出说明可能是把实例当模式，重新筛选
 
 ### Step 5: 报告归档结果
 

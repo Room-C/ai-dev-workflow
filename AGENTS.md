@@ -1,6 +1,6 @@
 # Agents
 
-本插件包含 6 个 Agent，分为两类：
+本插件包含 8 个 Agent，分为两类：
 
 ## 设计类（Design）
 
@@ -17,3 +17,5 @@
 | Agent | 文件 | 职责 | 被谁调用 |
 |-------|------|------|---------|
 | task-runner | `agents/workflow/task-runner.md` | 任务执行 — 逐任务实现代码变更 + 门控验证 | `rc:feature-implement` Phase 2 |
+| pr-reviewer | `agents/workflow/pr-reviewer.md` | PR 审查 — 审查 diff、分级修复、推送更新 | `rc:review-pr` 首轮 + 跟踪 Cron |
+| diff-reviewer | `agents/workflow/diff-reviewer.md` | Diff 审查 — Codex 首选 + Agent 降级 + 多视角并行 | `rc:diff-review` Step 3 |
