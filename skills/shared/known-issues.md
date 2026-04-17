@@ -53,3 +53,4 @@
 
 - **[2026-04-17]** `echo "$VAR" | xargs cmd` 在 `$VAR` 为空时仍会执行 `cmd ""`（BSD xargs 尤其明显），导致非预期行为。必须加前置守卫 `[ -n "$VAR" ] && echo "$VAR" | xargs ...`。（PR #6）
 - **[2026-04-17]** `git reset HEAD -- <file>` 对 secrets 取消暂存后必须再次 `git diff --cached --name-only | grep` 验证，reset 可能因路径转义/case mismatch 静默失败。（PR #6）
+- **[2026-04-17]** 检测"即将提交的文件"要用 `git diff HEAD --name-only`，不能用 `git diff --name-only`（后者只含未暂存）。否则用户预先 `git add` 过的 secrets 会漏检。（PR #6）

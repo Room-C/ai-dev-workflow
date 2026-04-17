@@ -41,9 +41,9 @@ Check the context above:
 
 ### Step 1 — Stage Changes
 
-1. Detect secret files in the diff:
+1. Detect secret files in the diff (`HEAD` 覆盖已暂存 + 未暂存，避免用户预先 `git add` 过 secrets 导致漏检)：
    ```bash
-   SECRETS=$(git diff --name-only | grep -E '(^|/)(\.env|.*\.pem|.*credentials.*|.*token.*)$' || true)
+   SECRETS=$(git diff HEAD --name-only | grep -E '(^|/)(\.env|.*\.pem|.*credentials.*|.*token.*)$' || true)
    ```
 2. Run `git add -A` to stage all changes.
 3. If `$SECRETS` is non-empty, unstage them and **verify**:
