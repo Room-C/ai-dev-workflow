@@ -52,6 +52,14 @@ STATE=$(echo "$META" | jq -r '.state')
 CURR_SHA=$(echo "$META" | jq -r '.headRefOid')
 CURR_COMMENTS=$(echo "$META" | jq -r '.comments | length')
 CURR_REVIEWS=$(echo "$META" | jq -r '.reviews | length')
+
+# 关键：gh pr view --json comments 只返回 issue-level comments（PR 时间线），
+# 不含 inline review comments（代码行内评论）。用户只回 inline 时 CURR_COMMENTS 不变，
+# 会被 gating 错误跳过。必须单独拉 inline comment 计数。
+CURR_INLINE=$(gh api "repos/{repo}/pulls/{pr_number}/comments" --jq 'length' 2>&1) || {
+  echo "ERROR: fetch inline comment count failed: $CURR_INLINE" >&2
+  return REVIEW_STOPPED
+}
 ```
 
 ### 0.2 PR 状态检查
@@ -82,17 +90,22 @@ jq --argjson r "$ROUND" '.round = $r' "{state_file}" > "{state_file}.tmp" && mv 
 PREV_SHA=$(jq -r '.lastSha // ""' "{state_file}")
 PREV_COMMENTS=$(jq -r '.lastCommentCount // 0' "{state_file}")
 PREV_REVIEWS=$(jq -r '.lastReviewCount // 0' "{state_file}")
+PREV_INLINE=$(jq -r '.lastInlineCommentCount // 0' "{state_file}")
 
 if [ "$CURR_SHA" = "$PREV_SHA" ] \
    && [ "$CURR_COMMENTS" = "$PREV_COMMENTS" ] \
-   && [ "$CURR_REVIEWS" = "$PREV_REVIEWS" ]; then
+   && [ "$CURR_REVIEWS" = "$PREV_REVIEWS" ] \
+   && [ "$CURR_INLINE" = "$PREV_INLINE" ]; then
   # 无任何新事件 — 跳过完整审查
   return REVIEW_SKIPPED
 fi
 
 # 有变化 — 更新基线后进入 Step 1~6 的完整审查
-jq --arg s "$CURR_SHA" --argjson c "$CURR_COMMENTS" --argjson v "$CURR_REVIEWS" \
-  '.lastSha = $s | .lastCommentCount = $c | .lastReviewCount = $v' \
+jq --arg s "$CURR_SHA" \
+   --argjson c "$CURR_COMMENTS" \
+   --argjson v "$CURR_REVIEWS" \
+   --argjson ic "$CURR_INLINE" \
+  '.lastSha = $s | .lastCommentCount = $c | .lastReviewCount = $v | .lastInlineCommentCount = $ic' \
   "{state_file}" > "{state_file}.tmp" && mv "{state_file}.tmp" "{state_file}"
 ```
 
@@ -232,13 +245,14 @@ fetch_or_stop() {
      }
 
      # 关键：exit 0 不代表真 push 了（某些 pre-push hook 会吞掉）。
-     # 必须拉取远端并对比 SHA
+     # 必须拉取远端并对比 SHA。用 FETCH_HEAD 而非 origin/<branch>：前者由 fetch 直接写入，
+     # 不依赖 remote.<name>.fetch 的 refspec 配置（非默认 refspec 时 origin/<branch> 可能不更新）
      git fetch origin "{head_branch}" --quiet || {
        echo "ERROR: git fetch after push failed"
        return REVIEW_MANUAL
      }
      LOCAL=$(git rev-parse HEAD)
-     REMOTE=$(git rev-parse "origin/{head_branch}")
+     REMOTE=$(git rev-parse FETCH_HEAD)
      if [ "$LOCAL" != "$REMOTE" ]; then
        echo "ERROR: push exit=0 but remote SHA mismatch (local=$LOCAL remote=$REMOTE) — refusing to claim success"
        return REVIEW_MANUAL
@@ -272,8 +286,9 @@ git fetch origin "{head_branch}" --quiet || {
   echo "ERROR: git fetch failed during DONE check"
   return REVIEW_MANUAL
 }
+# 用 FETCH_HEAD 而非 origin/<branch>（见 Step 5 同样的 refspec 注意事项）
 LOCAL=$(git rev-parse HEAD)
-REMOTE=$(git rev-parse "origin/{head_branch}" 2>/dev/null)
+REMOTE=$(git rev-parse FETCH_HEAD 2>/dev/null)
 if [ -z "$REMOTE" ] || [ "$LOCAL" != "$REMOTE" ]; then
   echo "ERROR: local commits not pushed (local=$LOCAL remote=$REMOTE) — refusing to mark DONE"
   return REVIEW_MANUAL
@@ -291,11 +306,12 @@ PENDING_MANUAL=$(echo "$COMMENTS" | jq '
   # 收集 agent 发的 manual 请求（以 🔍 或 ⚠️ 开头）
   [.[] | select(.body | test("^(🔍 需要人工决策|⚠️ 已修复，请确认)"))] as $manuals
   | [$manuals[] | .id] as $manual_ids
-  # 收集真人后续回复：user.type = User + body 不以 agent 前缀开头（排除 agent 自身的后续补充）
+  # 收集真人后续回复的 in_reply_to_id 集合（body 不以 agent 前缀开头，排除 agent 自身补充）
   | [.[] | select(.user.type == "User")
          | select(.body | test("^(🔍|⚠️|✅ 已自动修复|✅ 已修复|🟢)") | not)
-         | select((.in_reply_to_id // -1) as $r | $manual_ids | index($r))] as $human_replies
-  | ($manuals | length) - ($human_replies | length)
+         | .in_reply_to_id] as $reply_ids
+  # 集合覆盖检查：返回未被覆盖的 manual 数（非数量相减，避免"3 条 reply 全打在同 1 个 manual 上"误判 covered）
+  | $manual_ids | map(select(. as $id | $reply_ids | index($id) | not)) | length
 ')
 if [ "$PENDING_MANUAL" -gt 0 ] 2>/dev/null; then
   echo "ERROR: $PENDING_MANUAL 个 manual 项未收到人类回复 — refusing to mark DONE"

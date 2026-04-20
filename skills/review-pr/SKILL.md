@@ -60,13 +60,18 @@ pr_number, repo, head_branch, base_branch
 ```bash
 STATE_FILE="/tmp/.review-state-<N>.json"
 
-# 捕获 baseline：首轮审查时的 HEAD SHA + comment/review 计数
+# 捕获 baseline：首轮审查时的 HEAD SHA + 三种 comment/review 计数
+# 关键：gh pr view --json comments 只返回 issue-level（时间线），
+# 必须另外拉 inline review comments（代码行内评论）以避免 gating 盲区
 META=$(gh pr view <N> --json headRefOid,comments,reviews) || {
   echo "ERROR: cannot fetch baseline for Cron gating"; exit 1;
 }
 HEAD_SHA=$(echo "$META" | jq -r '.headRefOid')
 COMMENT_COUNT=$(echo "$META" | jq -r '.comments | length')
 REVIEW_COUNT=$(echo "$META" | jq -r '.reviews | length')
+INLINE_COUNT=$(gh api "repos/<repo>/pulls/<N>/comments" --jq 'length') || {
+  echo "ERROR: cannot fetch inline comment baseline"; exit 1;
+}
 
 STATE_JSON=$(jq -n \
   --argjson pr <N> \
@@ -74,7 +79,8 @@ STATE_JSON=$(jq -n \
   --arg sha "$HEAD_SHA" \
   --argjson c "$COMMENT_COUNT" \
   --argjson v "$REVIEW_COUNT" \
-  '{pr:$pr, round:1, maxRounds:$max, lastSha:$sha, lastCommentCount:$c, lastReviewCount:$v}')
+  --argjson ic "$INLINE_COUNT" \
+  '{pr:$pr, round:1, maxRounds:$max, lastSha:$sha, lastCommentCount:$c, lastReviewCount:$v, lastInlineCommentCount:$ic}')
 
 if ! printf '%s' "$STATE_JSON" > "$STATE_FILE"; then
   echo "ERROR: cannot write $STATE_FILE — refusing to schedule Cron without durable state." >&2
