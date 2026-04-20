@@ -3,6 +3,7 @@ name: rc:feature-implement
 description: 功能实现 — 将设计报告拆解为任务清单并逐任务自主执行，一条命令完成从 plan 到 code 的全流程。
 argument-hint: "<module> [design-path] [--skip N,M,...] [--start-from N] [--strict-verify]"
 allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Agent, AskUserQuestion
+model: sonnet
 ---
 
 # Feature Implement — 功能实现

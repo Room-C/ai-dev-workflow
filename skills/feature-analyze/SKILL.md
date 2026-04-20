@@ -3,6 +3,7 @@ name: rc:feature-analyze
 description: 需求分析师 — 将模糊需求转化为结构化分析文档（analysis.md）。支持文字描述、Issue URL、文档路径作为输入。
 argument-hint: "<需求描述 / issue-url / doc-path>"
 allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Agent, WebFetch, AskUserQuestion
+model: sonnet
 ---
 
 # Feature Analyze — 需求分析师

@@ -1,7 +1,7 @@
 ---
 name: validation-reviewer
 description: Validation 审查员 — 对 diff-reviewer 产出的 findings 逐条判定真伪、置信度、修复策略。输出 to_fix / dismissed / deferred 三分类。
-model: inherit
+model: opus
 tools: Read, Glob, Grep, Bash
 ---
 
