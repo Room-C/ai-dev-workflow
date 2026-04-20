@@ -1,6 +1,6 @@
 # Agents
 
-本插件包含 8 个 Agent，分为两类：
+本插件包含 10 个 Agent，分为两类：
 
 ## 设计类（Design）
 
@@ -18,4 +18,6 @@
 |-------|------|------|---------|
 | task-runner | `agents/workflow/task-runner.md` | 任务执行 — 逐任务实现代码变更 + 门控验证 | `rc:feature-implement` Phase 2 |
 | pr-reviewer | `agents/workflow/pr-reviewer.md` | PR 审查 — 审查 diff、分级修复、推送更新 | `rc:review-pr` 首轮 + 跟踪 Cron |
-| diff-reviewer | `agents/workflow/diff-reviewer.md` | Diff 审查 — Codex 首选 + Agent 降级 + 多视角并行 | `rc:diff-review` Step 3 |
+| diff-reviewer | `agents/workflow/diff-reviewer.md` | Diff 审查 — 四层弹性审查（Codex Skill → Codex Bash → Agent 子代理 → 原生内联），产出 findings JSON | `rc:diff-review` Step 4.1 |
+| validation-reviewer | `agents/workflow/validation-reviewer.md` | Finding 裁决 — 对每条 finding 判真伪 + 置信度 + 修复策略，输出 to_fix/dismissed/deferred | `rc:diff-review` Step 4.2 |
+| fix-runner | `agents/workflow/fix-runner.md` | Fix 执行 — 单条 to_fix 的修复 + 验证 + 失败归因 + 回滚/提交，隔离文件和日志上下文 | `rc:diff-review` Step 4.3 |
