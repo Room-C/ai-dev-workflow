@@ -3,6 +3,7 @@ name: rc:verify-screen
 description: 对比 Pencil 设计稿与模拟器/设备上的实现截图，识别视觉差异并输出可操作的修复建议。
 argument-hint: "<pen-file> <page-names...> [--platform ios|flutter]"
 allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Agent, AskUserQuestion, mcp__pencil__open_document, mcp__pencil__get_editor_state, mcp__pencil__batch_get, mcp__pencil__get_screenshot, mcp__pencil__snapshot_layout, mcp__xcodebuildmcp__screenshot, mcp__xcodebuildmcp__build_run_sim, mcp__xcodebuildmcp__boot_sim, mcp__dart__get_widget_tree, mcp__dart__launch_app, mcp__dart__hot_reload
+model: sonnet
 ---
 
 # rc:verify-screen

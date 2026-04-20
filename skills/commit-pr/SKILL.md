@@ -3,6 +3,7 @@ name: rc:commit
 description: 提交所有变更、推送并创建 PR 到目标分支。Conventional Commit 格式。
 argument-hint: "[target-branch]"
 allowed-tools: Bash, Read, Glob, Grep
+model: haiku
 ---
 
 # Commit & PR — 提交变更并创建 Pull Request
