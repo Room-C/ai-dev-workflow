@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.2.3 — 2026-04-20
+
+### Added
+- **rc:commit**: 新增独立提交技能 — 仅执行 Stage → Commit → Push，不创建 PR，提交到当前分支。
+
+### Fixed
+- **rc:commit-pr**: 修正 Skill 名称（`rc:commit` → `rc:commit-pr`），与目录名保持一致。
+
 ## 2.2.2 — 2026-04-20
 
 ### Fixed

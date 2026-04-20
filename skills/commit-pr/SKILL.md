@@ -1,5 +1,5 @@
 ---
-name: rc:commit
+name: rc:commit-pr
 description: 提交所有变更、推送并创建 PR 到目标分支。Conventional Commit 格式。
 argument-hint: "[target-branch]"
 allowed-tools: Bash, Read, Glob, Grep
