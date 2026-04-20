@@ -3,7 +3,7 @@ name: rc:feature-archive
 description: 功能归档者 — 归档关键决策、更新全局索引、知识沉淀到 docs/solutions/。
 argument-hint: "<module>"
 allowed-tools: Bash, Read, Write, Edit, Glob, Grep
-model: haiku
+model: sonnet
 ---
 
 # Feature Archive — 功能归档者

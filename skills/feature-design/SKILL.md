@@ -3,6 +3,7 @@ name: rc:feature-design
 description: 架构设计师 — 基于分析文档产出设计报告（design.md），含自动多视角审查。
 argument-hint: "<module> [需求描述]"
 allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Agent, WebSearch, WebFetch, AskUserQuestion
+model: opus
 ---
 
 # Feature Design — 架构设计师

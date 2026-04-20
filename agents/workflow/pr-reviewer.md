@@ -27,31 +27,89 @@ tools: Read, Write, Edit, Glob, Grep, Bash
 执行完毕必须返回以下信号之一：
 
 - `REVIEW_CLEAN` — 未发现 🔴/🟡 问题
-- `REVIEW_FIXED` — 发现问题并已自动修复推送（附修复摘要）
-- `REVIEW_MANUAL` — 发现需人工决策的问题（附问题清单）
-- `REVIEW_SKIPPED` — 本轮无新 commit，跳过
-- `REVIEW_DONE` — 所有问题已解决，可合并
+- `REVIEW_FIXED` — 发现问题并已**自动修复 + 提交 + 推送到远端验证成功**（附修复摘要）
+- `REVIEW_MANUAL` — 存在需人工决策的项（混合：部分可自动修、部分需人工 / 或 follow_up 中剩余 manual）
+- `REVIEW_MANUAL_ONLY` — **首轮专用**。全部问题均为 manual/advisory，agent 无法推进。Skill 收到此信号后**不启动 Cron**，等用户新 commit 后手动重跑
+- `REVIEW_SKIPPED` — 本轮无新 commit 且无新 comment/review，跳过（Cron 无需做完整审查）
+- `REVIEW_DONE` — 所有问题已解决（代码已推送验证 + 所有 manual 项有人类回复），可合并
 - `REVIEW_STOPPED` — PR 已关闭/合并，或达最大轮次
 
 ---
 
-## Step 0: 轮次与状态管理（仅 `follow_up` 模式）
+## Step 0: 状态、轮次与变更门控（仅 `follow_up` 模式）
 
-首轮 (`first_review`) 跳过本步骤。
+首轮 (`first_review`) 跳过本步骤。**核心目的**：在 Cron tick 一开始用极小代价判断是否真有新事件，避免每次都做完整审查。
 
-1. 检查 PR 状态：
-   ```bash
-   STATE=$(gh pr view "{pr_number}" --json state -q '.state' 2>&1) || {
-     # 详细错误走 stderr 供 Claude 读取；通知消息保持静态，避免 $STATE 内的引号/元字符破坏 osascript 解析
-     echo "ERROR: gh pr view failed: $STATE" >&2
-     osascript -e 'display notification "PR 状态检查失败（详见日志）" with title "Review Agent"'
-     return REVIEW_STOPPED
-   }
-   [ -z "$STATE" ] && return REVIEW_STOPPED  # 空返回视为调用失败
-   ```
-   若 `STATE` 非 `OPEN` → 发送通知 + 返回 `REVIEW_STOPPED`
-2. 读取 `state_file`，`round += 1` 后写回
-3. 若 `round > maxRounds` → 发送通知"已达最大审查轮次" + 返回 `REVIEW_STOPPED`
+### 0.1 单次请求获取元数据
+
+```bash
+META=$(gh pr view "{pr_number}" --json state,headRefOid,comments,reviews 2>&1) || {
+  echo "ERROR: gh pr view failed: $META" >&2
+  osascript -e 'display notification "PR 元数据获取失败（详见日志）" with title "Review Agent"'
+  return REVIEW_STOPPED
+}
+STATE=$(echo "$META" | jq -r '.state')
+CURR_SHA=$(echo "$META" | jq -r '.headRefOid')
+CURR_COMMENTS=$(echo "$META" | jq -r '.comments | length')
+CURR_REVIEWS=$(echo "$META" | jq -r '.reviews | length')
+
+# 关键：gh pr view --json comments 只返回 issue-level comments（PR 时间线），
+# 不含 inline review comments（代码行内评论）。用户只回 inline 时 CURR_COMMENTS 不变，
+# 会被 gating 错误跳过。必须单独拉 inline comment 计数。
+CURR_INLINE=$(gh api "repos/{repo}/pulls/{pr_number}/comments" --jq 'length' 2>&1) || {
+  echo "ERROR: fetch inline comment count failed: $CURR_INLINE" >&2
+  return REVIEW_STOPPED
+}
+```
+
+### 0.2 PR 状态检查
+
+```bash
+if [ "$STATE" != "OPEN" ]; then
+  osascript -e 'display notification "PR 已关闭或合并" with title "Review Agent"'
+  return REVIEW_STOPPED
+fi
+```
+
+### 0.3 轮次增量 + 上限检查
+
+```bash
+ROUND=$(jq -r '.round' "{state_file}")
+MAX=$(jq -r '.maxRounds' "{state_file}")
+ROUND=$((ROUND + 1))
+if [ "$ROUND" -gt "$MAX" ]; then
+  osascript -e 'display notification "已达最大审查轮次" with title "Review Agent"'
+  return REVIEW_STOPPED
+fi
+jq --argjson r "$ROUND" '.round = $r' "{state_file}" > "{state_file}.tmp" && mv "{state_file}.tmp" "{state_file}"
+```
+
+### 0.4 变更门控（cheap gate）
+
+```bash
+PREV_SHA=$(jq -r '.lastSha // ""' "{state_file}")
+PREV_COMMENTS=$(jq -r '.lastCommentCount // 0' "{state_file}")
+PREV_REVIEWS=$(jq -r '.lastReviewCount // 0' "{state_file}")
+PREV_INLINE=$(jq -r '.lastInlineCommentCount // 0' "{state_file}")
+
+if [ "$CURR_SHA" = "$PREV_SHA" ] \
+   && [ "$CURR_COMMENTS" = "$PREV_COMMENTS" ] \
+   && [ "$CURR_REVIEWS" = "$PREV_REVIEWS" ] \
+   && [ "$CURR_INLINE" = "$PREV_INLINE" ]; then
+  # 无任何新事件 — 跳过完整审查
+  return REVIEW_SKIPPED
+fi
+
+# 有变化 — 更新基线后进入 Step 1~6 的完整审查
+jq --arg s "$CURR_SHA" \
+   --argjson c "$CURR_COMMENTS" \
+   --argjson v "$CURR_REVIEWS" \
+   --argjson ic "$CURR_INLINE" \
+  '.lastSha = $s | .lastCommentCount = $c | .lastReviewCount = $v | .lastInlineCommentCount = $ic' \
+  "{state_file}" > "{state_file}.tmp" && mv "{state_file}.tmp" "{state_file}"
+```
+
+**原则：** 每次 Cron tick 的最坏情况预算是"Step 0 完成后 REVIEW_SKIPPED"（约 1k token）。只有 SHA / comments / reviews 任一变化才进入昂贵路径。
 
 ## Step 1: 获取变更与反馈
 
@@ -101,7 +159,8 @@ fetch_or_stop() {
    fi
    # 处理上述累积输出的 annotations，仅纳入 warning 和 failure 级别，忽略 notice
    ```
-5. 对比 HEAD SHA，若自上次 push 以来无新 commit → 返回 `REVIEW_SKIPPED`
+
+（SHA 比对已由 Step 0.4 完成，此处不再重复。）
 
 **关键：** 任何 `gh api` 调用失败必须返回 `REVIEW_STOPPED`，绝不能把失败当作"无 comments" → 错误地返回 `REVIEW_CLEAN` → 在有未解决 🔴 的 PR 上发"审查通过"通知。
 
@@ -178,18 +237,92 @@ fetch_or_stop() {
 3. 全部通过后：
    - `git add <具体文件>`（不用 `git add -A`）
    - `git commit -m "fix(review): <描述>"`
-   - **Push 失败必须返回 `REVIEW_MANUAL`**（防止假报告"已修复"）：
+   - **Push 并验证远端落地**：
      ```bash
      git push origin "{head_branch}" || {
        echo "ERROR: push rejected (branch protection / non-fast-forward / auth)"
        return REVIEW_MANUAL
      }
+
+     # 关键：exit 0 不代表真 push 了（某些 pre-push hook 会吞掉）。
+     # 必须拉取远端并对比 SHA。用 FETCH_HEAD 而非 origin/<branch>：前者由 fetch 直接写入，
+     # 不依赖 remote.<name>.fetch 的 refspec 配置（非默认 refspec 时 origin/<branch> 可能不更新）
+     git fetch origin "{head_branch}" --quiet || {
+       echo "ERROR: git fetch after push failed"
+       return REVIEW_MANUAL
+     }
+     LOCAL=$(git rev-parse HEAD)
+     REMOTE=$(git rev-parse FETCH_HEAD)
+     if [ "$LOCAL" != "$REMOTE" ]; then
+       echo "ERROR: push exit=0 but remote SHA mismatch (local=$LOCAL remote=$REMOTE) — refusing to claim success"
+       return REVIEW_MANUAL
+     fi
      ```
-4. 若全是 `manual` 项 → 返回 `REVIEW_MANUAL`；否则返回 `REVIEW_FIXED`
+4. 信号决定：
+   - 本轮确实有 `safe_auto` / `gated_auto` 修复已推送 → 返回 `REVIEW_FIXED`
+   - 全部为 `manual` / `advisory`（未做任何代码变更）：
+     - `first_review` 模式 → 返回 `REVIEW_MANUAL_ONLY`（Skill 将不启动 Cron）
+     - `follow_up` 模式 → 返回 `REVIEW_MANUAL`（继续循环，等新 commit 或人类回复）
 
 ## Step 6: 完成判定（仅 `follow_up` 模式）
 
-若本轮 Step 2 返回 `REVIEW_CLEAN` 且之前存在待修复项：
+若本轮 Step 2 返回 `REVIEW_CLEAN`，**必须依次通过三项守卫**才能返回 `REVIEW_DONE`。任一失败 → 返回 `REVIEW_MANUAL`（继续循环），不允许静默 DONE。
+
+### 守卫 1：工作区无未提交改动
+
+```bash
+UNCOMMITTED=$(git status --porcelain)
+if [ -n "$UNCOMMITTED" ]; then
+  echo "ERROR: uncommitted changes exist — refusing to mark DONE"
+  echo "$UNCOMMITTED"
+  return REVIEW_MANUAL
+fi
+```
+
+### 守卫 2：本地 HEAD 与远端一致（所有修复都已推送）
+
+```bash
+git fetch origin "{head_branch}" --quiet || {
+  echo "ERROR: git fetch failed during DONE check"
+  return REVIEW_MANUAL
+}
+# 用 FETCH_HEAD 而非 origin/<branch>（见 Step 5 同样的 refspec 注意事项）
+LOCAL=$(git rev-parse HEAD)
+REMOTE=$(git rev-parse FETCH_HEAD 2>/dev/null)
+if [ -z "$REMOTE" ] || [ "$LOCAL" != "$REMOTE" ]; then
+  echo "ERROR: local commits not pushed (local=$LOCAL remote=$REMOTE) — refusing to mark DONE"
+  return REVIEW_MANUAL
+fi
+```
+
+### 守卫 3：所有 agent 发出的 manual 项均有人类后续回复
+
+使用 Step 1 已获取的 `$COMMENTS`：
+
+```bash
+# 找出所有 agent 发的"需要人工决策"类 comment
+# （agent 自己的 comment user.type 为 Bot 或 login 匹配 github-actions / claude bot）
+PENDING_MANUAL=$(echo "$COMMENTS" | jq '
+  # 收集 agent 发的 manual 请求（以 🔍 或 ⚠️ 开头）
+  [.[] | select(.body | test("^(🔍 需要人工决策|⚠️ 已修复，请确认)"))] as $manuals
+  | [$manuals[] | .id] as $manual_ids
+  # 收集真人后续回复的 in_reply_to_id 集合（body 不以 agent 前缀开头，排除 agent 自身补充）
+  | [.[] | select(.user.type == "User")
+         | select(.body | test("^(🔍|⚠️|✅ 已自动修复|✅ 已修复|🟢)") | not)
+         | .in_reply_to_id] as $reply_ids
+  # 集合覆盖检查：返回未被覆盖的 manual 数（非数量相减，避免"3 条 reply 全打在同 1 个 manual 上"误判 covered）
+  | $manual_ids | map(select(. as $id | $reply_ids | index($id) | not)) | length
+')
+if [ "$PENDING_MANUAL" -gt 0 ] 2>/dev/null; then
+  echo "ERROR: $PENDING_MANUAL 个 manual 项未收到人类回复 — refusing to mark DONE"
+  return REVIEW_MANUAL
+fi
+```
+
+> **注：** 此守卫是**近似**检测（依赖 GitHub API 的 `in_reply_to_id`）。若无法精确匹配，宁可 MANUAL 继续循环也不要误判 DONE。
+
+### 三项全过 → DONE
+
 1. 提交最终 comment：`✅ 自动审查完成 — 所有问题已修复，可以合并。`
 2. 发送 macOS 通知（见下方）
 3. 返回 `REVIEW_DONE`
