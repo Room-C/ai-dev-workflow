@@ -3,6 +3,7 @@ name: rc:skill-evolve
 description: 分析 Skill 执行遥测数据，识别反复失败模式，提出改进方案并更新 known-issues。当用户说"分析技能健康度"、"skill 进化"、"为什么总是失败"时触发。
 argument-hint: "[--apply] [--skill <name>]"
 allowed-tools: Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion
+model: sonnet
 ---
 
 # Skill Evolve — 自进化分析与修补

@@ -3,6 +3,7 @@ name: rc:implement-screen
 description: 从 Pencil 设计稿实现 UI 页面。读取 .pen 文件获取结构化设计数据，生成平台原生代码（默认 iOS/SwiftUI，支持 Flutter）。支持多页面批量实现。
 argument-hint: "<pen-file> <page-names...> [--platform ios|flutter] [--target-dir <dir>]"
 allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Agent, AskUserQuestion, mcp__pencil__open_document, mcp__pencil__get_editor_state, mcp__pencil__batch_get, mcp__pencil__snapshot_layout, mcp__pencil__get_screenshot, mcp__pencil__get_guidelines, mcp__pencil__export_nodes, mcp__pencil__get_variables, mcp__xcodebuildmcp__build_sim, mcp__xcodebuildmcp__build_run_sim, mcp__xcodebuildmcp__boot_sim, mcp__xcode__BuildProject, mcp__xcode__RunAllTests, mcp__dart__analyze_files, mcp__dart__run_tests, mcp__dart__launch_app, mcp__dart__hot_reload
+model: sonnet
 ---
 
 # rc:implement-screen

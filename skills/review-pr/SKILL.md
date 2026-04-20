@@ -3,6 +3,7 @@ name: rc:review-pr
 description: 自动化 PR Code Review — 先立即审查，仅在发现问题时启动后续跟踪循环。
 argument-hint: "[PR-number] [--model sonnet|opus|haiku]"
 allowed-tools: Bash, Read, Agent, CronCreate, CronDelete
+model: sonnet
 ---
 
 # Auto PR Review
