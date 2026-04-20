@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.2.1 — 2026-04-20
+
+### Changed
+- **Skills**: 每个 Skill 明确指定使用模型，确保调度行为与模型能力匹配。
+
+### Fixed
+- **rc:diff-review**: 闭环审查工作流重构 — 四层弹性降级（Codex Skill → Codex Bash → Agent SubAgent → 原生内联），三 SubAgent 隔离（diff-reviewer、validation-reviewer、fix-runner）。
+- **rc:diff-review / fix-runner**: 验证日志按 KIND 分文件写入，避免顺序覆写破坏失败归因。
+
 ## 2.2.0 — 2026-04-17
 
 ### Changed
