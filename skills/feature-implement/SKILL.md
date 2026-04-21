@@ -153,7 +153,20 @@ Agent({ subagent_type: "ai-dev-workflow:workflow:task-runner", prompt: 任务详
 
 写入 tasks.md 同级 `implementation-report.md`，包含：概要（计划文件、日期、任务统计）、提交记录表、验证结果、备注。
 
-### Step 3.2: 提示用户
+### Step 3.2: 清理中间产物
+
+删除 analyze → design 阶段的中间产物，这些文件在实现完成后不再有用：
+
+```bash
+FEATURE_DIR="$(dirname "{tasks_path}")"
+rm -f "$FEATURE_DIR/.context-snapshot.md"
+rm -f "$FEATURE_DIR/.baseline-snapshot.json"
+rm -rf "$FEATURE_DIR/reviews/"
+```
+
+静默执行，文件不存在时跳过，不输出任何内容。
+
+### Step 3.3: 提示用户
 
 ```
 ✅ 所有任务已完成并通过验证。
@@ -163,7 +176,7 @@ Agent({ subagent_type: "ai-dev-workflow:workflow:task-runner", prompt: 任务详
    - 运行 /rc:feature-archive {module} 归档关键决策和经验教训
 ```
 
-### Step 3.3: 执行遥测
+### Step 3.4: 执行遥测
 
 按 CLAUDE.md "Execution Telemetry" 章节记录遥测（status: success / partial / failed）。脚本不存在则跳过。
 
