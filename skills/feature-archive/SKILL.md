@@ -63,7 +63,20 @@ model: sonnet
 - 归档阶段沉淀的典型素材是"本次开发过程中意外遇到的问题"和"验证后确认的最佳实践"
 - **一次归档最多写 3 条 solution**，超出说明可能是把实例当模式，重新筛选
 
-### Step 5: 报告归档结果
+### Step 5: 清理中间产物（安全兜底）
+
+如果以下文件仍然存在（`rc:feature-implement` 未执行或未清理），在此阶段删除：
+
+```bash
+FEATURE_DIR="docs/features/{module}/{version}"
+rm -f "$FEATURE_DIR/.context-snapshot.md"
+rm -f "$FEATURE_DIR/.baseline-snapshot.json"
+rm -rf "$FEATURE_DIR/reviews/"
+```
+
+静默执行，文件不存在时跳过。
+
+### Step 6: 报告归档结果
 
 向用户输出归档摘要：
 
