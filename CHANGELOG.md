@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.2.5 — 2026-04-21
+
+### Changed
+- **pr-reviewer**: 收紧 Step 4 分级判据 — 以「答案数」为单一维度（`gated_auto` = 答案唯一，`manual` = ≥2 种合理方案），边界模糊时倾向 `gated_auto`。修正此前把"补校验 / 同步常量 / 空值守卫"这类单一答案的修复误判为 `manual`、导致 `rc:review-pr` 整流停摆的问题。
+
 ## 2.2.4 — 2026-04-21
 
 ### Added
