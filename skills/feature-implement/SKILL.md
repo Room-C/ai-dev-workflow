@@ -158,7 +158,7 @@ Agent({ subagent_type: "ai-dev-workflow:workflow:task-runner", prompt: 任务详
 删除 analyze → design 阶段的中间产物，这些文件在实现完成后不再有用：
 
 ```bash
-FEATURE_DIR="$(dirname <tasks.md 路径>)"
+FEATURE_DIR="$(dirname "{tasks_path}")"
 rm -f "$FEATURE_DIR/.context-snapshot.md"
 rm -f "$FEATURE_DIR/.baseline-snapshot.json"
 rm -rf "$FEATURE_DIR/reviews/"
