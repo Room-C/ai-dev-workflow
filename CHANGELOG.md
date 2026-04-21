@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.2.4 — 2026-04-21
+
+### Added
+- **rc:feature-implement / rc:feature-archive**: 执行完成后自动清理中间文件（analysis.md、design.md、tasks.md），保持工作目录整洁。
+
+### Fixed
+- **rc:feature-implement**: 修正 tasks.md 路径占位符规范化，避免路径拼接错误。
+
 ## 2.2.3 — 2026-04-20
 
 ### Added
