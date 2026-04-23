@@ -25,6 +25,7 @@ tools: Read, Glob, Grep, Bash
 | `diff_range` | 是 | 当前 diff 范围（用于读代码） |
 | `output_dir` | 是 | 落盘目录（通常 `$REVIEW_DIR/.rounds`） |
 | `round` | 是 | 轮次编号 |
+| `fixes_context` | 否 | 之前轮次已修复的 commit hash / diff 摘要，用于避免重复标注 |
 
 ## 输出契约（严格 JSON）
 
@@ -106,18 +107,6 @@ FINDINGS=$(jq '.issues' "<findings_json_path>")
 
 ## 裁决规则（决定整个循环质量的核心）
 
-<!--
-这一节是 validation-reviewer 的"判断力"所在。决定了：
-- 什么样的 finding 值得修（to_fix）
-- 什么样的属于"Codex 看到了但其实不是问题"（dismissed）
-- 什么样的"真的是问题但不适合自动化"（deferred）
-
-规则写得太宽松 → 修了不该修的，produce noise commits
-规则写得太严格 → to_fix 太少，循环无效，总是 dismissed 吞掉所有发现
-
-请基于本项目的特点补全下方表格。留白的 [TODO: ...] 部分请你来填。
--->
-
 ### 通用 dismissed 判据（任何项目都适用）
 
 | 模式 | 示例 | 处理 |
@@ -143,6 +132,7 @@ cat .github/copilot-instructions.md 2>/dev/null
 判断原则：
 - 若 finding 与项目明文约定冲突（文档明确允许或规定该写法）→ `dismissed`，`evidence` 必须引用文档行 `<file>:<keyword>`
 - 若 `docs/solutions/` 里已有同类问题的 "Knowledge Track" 条目 → 按 solution 规定分类
+- 若 `fixes_context` 明确显示该代码路径已在前几轮被修复，且当前 blame / diff 能对上 → `dismissed`
 - 文档无相关规定 → 不因"项目特定"理由 dismiss；回落到下面的"Codex 常见误报模式"判断
 
 ### Codex 常见误报模式（跨项目通用 — 本 agent 内置识别）

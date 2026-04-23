@@ -24,9 +24,17 @@ done
 
 # Determine diff range
 if [[ -n "$SINCE_COMMIT" ]]; then
+  BASE_REF="$SINCE_COMMIT"
   DIFF_RANGE="${SINCE_COMMIT}...HEAD"
 else
+  BASE_REF="$TARGET_BRANCH"
   DIFF_RANGE="${TARGET_BRANCH}...HEAD"
+fi
+
+# Fail fast on an invalid comparison base instead of silently reporting "no changes".
+if ! git rev-parse --verify "$BASE_REF" > /dev/null 2>&1; then
+  echo "ERROR: cannot resolve diff base: $BASE_REF" >&2
+  exit 1
 fi
 
 # Noise filter patterns (lockfiles, generated, migrations, minified, pbxproj)
@@ -51,7 +59,10 @@ fi
 PATH_ARGS+=("${EXCLUDE_PATTERNS[@]}")
 
 # Check for changes
-CHANGED_FILES=$(git diff "$DIFF_RANGE" --name-only "${PATH_ARGS[@]}" 2>/dev/null || true)
+if ! CHANGED_FILES=$(git diff "$DIFF_RANGE" --name-only "${PATH_ARGS[@]}" 2>/dev/null); then
+  echo "ERROR: git diff failed for range $DIFF_RANGE" >&2
+  exit 1
+fi
 
 if [[ -z "$CHANGED_FILES" ]]; then
   cat <<EOF

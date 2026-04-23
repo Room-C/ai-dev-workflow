@@ -21,7 +21,7 @@ tools: Read, Write, Glob, Grep, Bash, Skill, Agent
 |---|------|------|------|
 | L1. Codex Skill | Codex 插件 + Skill 注册 | 低 | 高 |
 | L2. Codex Bash 直调 | Codex companion 脚本存在 | 低 | 高 |
-| L3. Agent 子代理 | `feature-dev:code-reviewer` 可用 | 中 | 中高 |
+| L3. Agent 子代理 | 通用代码审查子代理可用 | 中 | 中高 |
 | L4. 原生内联审查 | 仅需 Read/Grep/git | 高（token 成本） | 中 |
 
 每层失败自动降级到下一层。只有 **L4 都不可用**（等于仓库损坏）才返回 `engine: "failed"`。
@@ -80,7 +80,7 @@ CODEX_SCRIPT=$(ls "$HOME/.claude/plugins/cache/openai-codex/codex"/*/scripts/cod
 L1_AVAIL=0; [ -f "$CODEX_SKILL_FILE" ] && L1_AVAIL=1
 L2_AVAIL=0; [ -n "$CODEX_SCRIPT" ] && [ -f "$CODEX_SCRIPT" ] && L2_AVAIL=1
 
-# L3: feature-dev:code-reviewer agent 注册情况（粗检：只要能被 Agent 工具调起即可，此处不强预检）
+# L3: 通用代码审查子代理（粗检：只要能被 Agent 工具调起即可，此处不强预检）
 L3_AVAIL=1   # 假定可用，调用失败时自动降级到 L4
 
 # L4: 原生内联 — 只需 git 可用
@@ -162,7 +162,7 @@ fi
 ### 2c. L3 — Agent 子代理审查
 
 1. `git diff <diff_range> [-- "<path_filter>"]` 获取 diff
-2. 调用 `feature-dev:code-reviewer` 子 agent，传入：
+2. 调用**通用代码审查子代理**，传入：
    - diff 全文（大 diff 需分块，> 100k chars 按文件拆分并行）
    - 项目上下文（CLAUDE.md / AGENTS.md 关键摘录）
    - `dismissed_context` / `fixes_context`
