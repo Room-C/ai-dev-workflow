@@ -52,6 +52,7 @@ STATE=$(echo "$META" | jq -r '.state')
 CURR_SHA=$(echo "$META" | jq -r '.headRefOid')
 CURR_COMMENTS=$(echo "$META" | jq -r '.comments | length')
 CURR_REVIEWS=$(echo "$META" | jq -r '.reviews | length')
+HEAD_SHA="$CURR_SHA"
 
 # 关键：gh pr view --json comments 只返回 issue-level comments（PR 时间线），
 # 不含 inline review comments（代码行内评论）。用户只回 inline 时 CURR_COMMENTS 不变，
@@ -113,7 +114,7 @@ jq --arg s "$CURR_SHA" \
 
 ## Step 1: 获取变更与反馈
 
-**首轮模式**：只需 `gh pr diff {pr_number}`。跳过 prior comments/annotations 获取（PR 刚建，不存在历史反馈）。
+**首轮模式**：仍然先拉一遍 PR 元数据，判断这个 open PR 是否已经有历史 feedback。**不要假设 "首轮 = PR 刚建"**。如果已有 inline comments / reviews / failed check runs，必须一并纳入本轮处理，避免把旧问题误判成 clean。
 
 **后续模式**：获取以下全部。**每个 `gh api` 调用都必须检查 exit status**，区分"0 条结果"与"调用失败"（后者意味着 rate limit、token 过期或网络问题，不能当作 clean 处理）：
 
@@ -131,11 +132,23 @@ fetch_or_stop() {
 
 所有调用必须用 `VAR=$(...) || return REVIEW_STOPPED` 形式承接返回值，否则封装形同虚设：
 
+0. 首轮模式先拿元数据（follow_up 已在 Step 0 拿过，可复用）：
+   ```bash
+   if [ "{mode}" = "first_review" ]; then
+     META=$(gh pr view "{pr_number}" --json headRefOid,comments,reviews 2>&1) || {
+       echo "ERROR: gh pr view failed: $META" >&2
+       return REVIEW_STOPPED
+     }
+     HEAD_SHA=$(echo "$META" | jq -r '.headRefOid')
+     CURR_COMMENTS=$(echo "$META" | jq -r '.comments | length')
+     CURR_REVIEWS=$(echo "$META" | jq -r '.reviews | length')
+   fi
+   ```
 1. 获取最新 diff：
    ```bash
    DIFF=$(gh pr diff "{pr_number}" 2>&1) || { echo "ERROR: gh pr diff failed: $DIFF" >&2; return REVIEW_STOPPED; }
    ```
-2. Inline comments：
+2. Inline comments（首轮若已有历史反馈也必须抓）：
    ```bash
    COMMENTS=$(fetch_or_stop repos/{repo}/pulls/{pr_number}/comments --paginate) || return REVIEW_STOPPED
    ```
@@ -145,7 +158,7 @@ fetch_or_stop() {
    ```
 4. Check Run Annotations：
    ```bash
-   CHECK_RUNS=$(fetch_or_stop repos/{repo}/commits/{HEAD_SHA}/check-runs --paginate \
+   CHECK_RUNS=$(fetch_or_stop repos/{repo}/commits/"$HEAD_SHA"/check-runs --paginate \
      -q '.check_runs[] | select(.conclusion == "failure" or .conclusion == "action_required")') \
      || return REVIEW_STOPPED
    # 对每个失败的 check run 获取 annotations
@@ -184,7 +197,7 @@ fetch_or_stop() {
 
 若无 🔴/🟡 问题 → 返回 `REVIEW_CLEAN`。
 
-## Step 3: 外部反馈分类（仅 `follow_up` 模式）
+## Step 3: 外部反馈分类（`follow_up` 模式，或 `first_review` 且 PR 已有历史反馈）
 
 对 Step 1 已获取的 prior comments + annotations 逐条判定状态：
 
@@ -196,6 +209,8 @@ fetch_or_stop() {
 | 讨论性质 | 非具体代码问题 | 回复说明原因 |
 
 跳过：🟢 可选优化、已有自己回复的条目。
+
+如果 `first_review` 模式下 `COMMENTS` / `REVIEWS` / failed check-runs 全为空，可以跳过本步骤，按普通首轮 diff review 处理。
 
 ## Step 4: 分级修复
 
