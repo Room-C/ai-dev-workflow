@@ -1,7 +1,7 @@
 ---
 name: rc:feature-design
 description: 架构设计师 — 基于分析文档产出设计报告（design.md），含自动多视角审查。
-argument-hint: "<module> [需求描述]"
+argument-hint: "<module> [--version <version>] [--side backend|frontend|mobile|fullstack] [需求描述]"
 allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Agent, WebSearch, WebFetch, AskUserQuestion
 model: opus
 ---
@@ -13,6 +13,18 @@ model: opus
 ## 工作流程
 
 ### Step 1: 收集上下文
+
+先解析目标目录：
+
+- `--version` 显式传入时直接使用
+- 未指定 `--version` 且模块目录不存在时，默认使用 `v1`
+- 未指定 `--version` 且该模块只有一个版本目录时，复用该版本
+- 未指定 `--version` 且该模块有多个版本目录时，要求用户明确指定
+- `--side` 显式传入时，读写 `{module}/{version}/{side}/`
+- 未指定 `--side` 时：
+  - 若版本根目录已有 `design.md`，默认使用根目录设计
+  - 若仅有一个 side 子目录存在 `design.md`，自动选中该 side
+  - 若存在多个 side 设计稿，要求用户明确指定 `--side`
 
 #### 路径 A：增量模式（存在 analysis.md + .context-snapshot.md）
 
@@ -41,6 +53,8 @@ model: opus
 如果没有 analysis.md，直接从用户需求描述出发，但需要补齐分析文档中缺失的关键信息（向用户确认）。
 
 ### Step 2: 撰写设计报告
+
+默认派发 `ai-dev-workflow:design:analyst` 子代理起草 `design.md`；仅在极简单场景下可直接在主上下文完成。
 
 输出路径：`docs/features/{module}/{version}/design.md`；如果指定了 `side`（如 `backend`、`frontend`），则输出到 `docs/features/{module}/{version}/{side}/design.md`
 
@@ -181,7 +195,8 @@ tags: [design, ...]
 ```
 ✅ design.md 已定稿。
 
-📋 下一步：运行 /feature-implement {module} 将设计拆解为任务清单并逐任务实现。
+📋 下一步：运行 /rc:feature-implement {module} --version {version} 将设计拆解为任务清单并逐任务实现。
+如本次设计是 side-specific，再补上对应的 `--side <side>`。
 ```
 
 ## 原则

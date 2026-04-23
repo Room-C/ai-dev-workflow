@@ -1,7 +1,7 @@
 ---
 name: rc:feature-analyze
 description: 需求分析师 — 将模糊需求转化为结构化分析文档（analysis.md）。支持文字描述、Issue URL、文档路径作为输入。
-argument-hint: "<需求描述 / issue-url / doc-path>"
+argument-hint: "<需求描述 / issue-url / doc-path> [--module <module>] [--version <version>]"
 allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Agent, WebFetch, AskUserQuestion
 model: sonnet
 ---
@@ -80,7 +80,13 @@ model: sonnet
 
 **输出路径**：`docs/features/{module}/{version}/analysis.md`
 
-如果用户没有指定模块名或版本号，根据需求内容和现有 `docs/features/` 结构合理推断，并向用户确认。
+模块和版本的解析规则：
+
+1. `--module` / `--version` 显式传入时，直接使用
+2. 未指定 `--module` 时，可根据需求内容合理推断模块名
+3. 未指定 `--version` 且该模块还不存在时，默认创建 `v1`
+4. 未指定 `--version` 且该模块只有一个现有版本目录时，复用该版本
+5. 未指定 `--version` 且该模块已有多个版本目录时，**不要猜**，要求用户明确指定
 
 ### Step 7: 生成上下文快照
 
@@ -193,3 +199,7 @@ tags: [analysis, ...]
 5. **标注不确定性**：任何假设和推断都要显式标注 `[假设]`
 6. **用中文输出**：所有文档内容使用中文
 7. **上下文快照要轻量**：`.context-snapshot.md` 严守 30 行上限，是索引不是副本，为下游 Skill 节省上下文
+
+## 收尾
+
+结束前按项目 `CLAUDE.md` 的 "Execution Telemetry" 章节记录遥测；若脚本不存在，可跳过但要在输出中明确说明。

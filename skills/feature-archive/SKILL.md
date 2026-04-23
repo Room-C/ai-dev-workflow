@@ -1,7 +1,7 @@
 ---
 name: rc:feature-archive
 description: 功能归档者 — 归档关键决策、更新全局索引、知识沉淀到 docs/solutions/。
-argument-hint: "<module>"
+argument-hint: "<module> [--version <version>] [--side backend|frontend|mobile|fullstack]"
 allowed-tools: Bash, Read, Write, Edit, Glob, Grep
 model: sonnet
 ---
@@ -15,10 +15,16 @@ model: sonnet
 ### Step 1: 收集信息
 
 1. **读取 CLAUDE.md**：了解项目结构和文档约定
-2. **读取功能文档**：`docs/features/{module}/{version}/` 下的所有文档（analysis.md、design.md、tasks.md）
-3. **读取 tasks.md 状态**：确认所有任务已完成（✅），如果有未完成任务，提醒用户先完成
-4. **读取 git log**：获取本功能相关的提交历史（`git log --oneline --grep="{module}"`）
-5. **读取 `docs/features/registry.md`**（如果存在）：了解现有索引格式
+2. **解析 feature 目录**：
+   - `--version` 显式传入时直接使用
+   - 未指定 `--version` 且该模块只有一个版本目录时，自动复用
+   - 未指定 `--version` 且该模块有多个版本目录时，要求用户明确指定
+   - `--side` 显式传入时，读取 `{module}/{version}/{side}/`
+   - 未指定 `--side` 时，优先读取版本根目录；若只有一个 side 子目录存在 `tasks.md`/`design.md`，可自动选中；若存在多个 side 子目录，要求用户明确指定
+3. **读取功能文档**：解析出的 feature 目录下所有文档（analysis.md、design.md、tasks.md）
+4. **读取 tasks.md 状态**：确认所有任务已完成（✅），如果有未完成任务，提醒用户先完成
+5. **读取 git log**：获取本功能相关的提交历史（`git log --oneline --grep="{module}"`）
+6. **读取 `docs/features/registry.md`**（如果存在）：了解现有索引格式
 
 ### Step 2: 更新全局特性索引
 
@@ -68,8 +74,12 @@ model: sonnet
 如果以下文件仍然存在（`rc:feature-implement` 未执行或未清理），在此阶段删除：
 
 ```bash
-FEATURE_DIR="docs/features/{module}/{version}"
-rm -f "$FEATURE_DIR/.context-snapshot.md"
+FEATURE_DIR="<resolved-feature-dir>"
+VERSION_DIR="$FEATURE_DIR"
+case "$(basename "$FEATURE_DIR")" in
+  backend|frontend|mobile|fullstack) VERSION_DIR="$(dirname "$FEATURE_DIR")" ;;
+esac
+rm -f "$VERSION_DIR/.context-snapshot.md"
 rm -f "$FEATURE_DIR/.baseline-snapshot.json"
 rm -rf "$FEATURE_DIR/reviews/"
 ```
