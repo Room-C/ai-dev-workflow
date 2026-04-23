@@ -194,13 +194,15 @@ fi
 ### Step 8: 记录自身遥测
 
 ```bash
-RECORD_SCRIPT=$(ls "$HOME/.claude/plugins/cache/ai-dev-workflow"/*/*/skills/shared/scripts/record-outcome.sh 2>/dev/null | tail -1)
+RECORD_SCRIPT=$(ls "$HOME/.claude/plugins/cache/ai-dev-workflow"/*/*/skills/shared/scripts/record-outcome.sh 2>/dev/null | sort -V | tail -1)
 if [ -z "$RECORD_SCRIPT" ]; then
   for candidate in "skills/shared/scripts/record-outcome.sh" "dev_workflow/skills/shared/scripts/record-outcome.sh"; do
     [ -f "$candidate" ] && RECORD_SCRIPT="$candidate" && break
   done
 fi
-[ -n "$RECORD_SCRIPT" ] && bash "$RECORD_SCRIPT" skill-evolve <status>
+if [ -n "$RECORD_SCRIPT" ] && [ -f "$RECORD_SCRIPT" ]; then
+  bash "$RECORD_SCRIPT" skill-evolve <status>
+fi
 ```
 
 ## 重要提醒

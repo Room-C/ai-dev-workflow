@@ -1,7 +1,7 @@
 ---
 name: rc:read-design
 description: 通过 Pencil MCP 读取 .pen 设计稿，输出结构化设计信息（节点树、样式、布局、截图）。纯探索，不写代码。
-argument-hint: "<pen-file> [page-names...]"
+argument-hint: "<pen-file> [page-names...] [--depth overview|structure|detail]"
 allowed-tools: Bash, Read, Glob, Grep, AskUserQuestion, mcp__pencil__open_document, mcp__pencil__get_editor_state, mcp__pencil__batch_get, mcp__pencil__snapshot_layout, mcp__pencil__get_screenshot, mcp__pencil__get_guidelines, mcp__pencil__export_nodes, mcp__pencil__get_variables
 model: haiku
 ---

@@ -1,11 +1,11 @@
 ---
 name: rc:commit
-description: 提交所有变更并推送到当前分支。Conventional Commit 格式。
+description: 提交所有变更并推送到当前分支，不创建 PR。Conventional Commit 格式。
 allowed-tools: Bash, Read, Glob, Grep
 model: haiku
 ---
 
-# Commit — 提交变更并推送到当前分支
+# Commit — 提交变更并推送到当前分支（不创建 PR）
 
 提交所有变更并推送到当前远程分支。
 

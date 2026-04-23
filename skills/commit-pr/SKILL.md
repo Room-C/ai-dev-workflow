@@ -20,7 +20,7 @@ model: haiku
 
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
-| 目标分支 | `main` | PR 的 base branch，如 `rc:commit develop` |
+| 目标分支 | `main` | PR 的 base branch，如 `rc:commit-pr develop` |
 
 ## 工作流程
 
