@@ -2,7 +2,7 @@
 
 Claude Code 插件 — 把「随意对话式编程」变成**结构化 AI 工作流**。
 
-一句 slash command 就能驱动完整的开发链路：需求分析 → 架构设计 → 实现 → 代码审查 → 提交 PR。11 个技能、6 个 Agent，即装即用。
+一句 slash command 就能驱动完整的开发链路：需求分析 → 架构设计 → 实现 → 代码审查 → 提交 PR。12 个技能、10 个 Agent，即装即用。
 
 ## 安装
 
@@ -28,7 +28,7 @@ git clone https://github.com/Room-C/ai-dev-workflow.git ~/.claude/plugins/ai-dev
 └────────────────────────────────────────────────────────────────────┘
 
 ┌─ Quality Gates ────────────────────────────────────────────────────┐
-│  diff-review → commit → review-pr                                 │
+│  diff-review → commit-pr → review-pr                              │
 │  多视角审查 → 规范提交 → PR 闭环跟踪                                  │
 └────────────────────────────────────────────────────────────────────┘
 
@@ -42,19 +42,19 @@ git clone https://github.com/Room-C/ai-dev-workflow.git ~/.claude/plugins/ai-dev
 
 ```bash
 # 1. 分析需求
-/rc:feature-analyze "用户希望添加消息通知功能"
+/rc:feature-analyze "用户希望添加消息通知功能" --module notification --version v1
 
 # 2. 设计架构（产出 design.md，含三视角自动审查）
-/rc:feature-design notification
+/rc:feature-design notification --version v1
 
 # 3. 拆解任务 + 逐任务执行（一步到位）
-/rc:feature-implement notification
+/rc:feature-implement notification --version v1
 
 # 4. 合并前审查
 /rc:diff-review main
 
 # 5. 提交 + 创建 PR
-/rc:commit main
+/rc:commit-pr main
 ```
 
 ## 技能清单
@@ -73,7 +73,8 @@ git clone https://github.com/Room-C/ai-dev-workflow.git ~/.claude/plugins/ai-dev
 | 技能 | 说明 |
 |------|------|
 | `rc:diff-review` | 分支对比审查 — Codex Companion 优先 + Agent 多视角降级，多轮迭代修复，自动沉淀知识 |
-| `rc:commit` | 提交 + 推送 + 创建 PR（Conventional Commits 格式） |
+| `rc:commit` | 提交 + 推送到当前分支（不创建 PR） |
+| `rc:commit-pr` | 提交 + 推送 + 创建 PR（Conventional Commits 格式） |
 | `rc:review-pr` | PR 审查 — 先立即审查，仅在有问题时启动跟踪循环；采集 CI annotations + 外部评论并闭环回复 |
 
 ### Design-to-Code — Pencil 设计稿转代码
@@ -100,7 +101,7 @@ Skill 执行 → 遥测记录 → skill-evolve 分析 → known-issues 更新 / 
 
 ## Agent 列表
 
-6 个 Agent 分两类，详见 [AGENTS.md](AGENTS.md)：
+10 个 Agent 分两类，详见 [AGENTS.md](AGENTS.md)：
 
 | 类别 | Agent | 职责 | 调用方 |
 |------|-------|------|--------|
@@ -110,6 +111,10 @@ Skill 执行 → 遥测记录 → skill-evolve 分析 → known-issues 更新 / 
 | 设计类 | `feasibility-reviewer` | 技术可行性审查 | `rc:feature-design` Step 3 |
 | 设计类 | `scope-guardian` | 范围守卫 — 防过度设计 | `rc:feature-design` Step 3 |
 | 工作流 | `task-runner` | 逐任务实现 + 门控验证 | `rc:feature-implement` Phase 2 |
+| 工作流 | `pr-reviewer` | PR 审查、分级修复、推送更新 | `rc:review-pr` |
+| 工作流 | `diff-reviewer` | Diff 审查，产出 findings JSON | `rc:diff-review` Step 4.1 |
+| 工作流 | `validation-reviewer` | Finding 裁决，输出 to_fix/dismissed/deferred | `rc:diff-review` Step 4.2 |
+| 工作流 | `fix-runner` | 单条 to_fix 修复 + 验证 + 回滚/提交 | `rc:diff-review` Step 4.3 |
 
 ## 核心原则
 
