@@ -10,6 +10,15 @@ model: sonnet
 
 分析 Skill 执行遥测数据，识别反复出现的失败模式，自动更新 known-issues 注册表，对严重模式提出 SKILL.md 补丁提案。
 
+## Portable Runtime
+
+本 Skill 必须能通过 `npx skills add --copy` 单独安装后运行。运行时资源优先从当前 Skill 目录读取：
+
+- `references/shared/known-issues.md`
+- `scripts/record-outcome.sh`
+
+`--apply` 只应修改当前可写的 Skill 源目录。如果当前运行的是只读安装副本，生成报告和补丁建议，不要强行修改原仓库。
+
 ## 参数
 
 | 参数 | 默认值 | 说明 |
@@ -26,7 +35,7 @@ TELEMETRY_FILE="$HOME/.ai-dev-workflow/telemetry.jsonl"
 ```
 
 1. 读取 `$TELEMETRY_FILE`，如果文件不存在或为空 → 告知用户"尚无遥测数据，请先执行几次 Skill 后再运行"，**结束流程**
-2. 读取 `skills/shared/known-issues.md`（通过插件缓存路径定位）
+2. 读取 `references/shared/known-issues.md`；若正在仓库源码内运行，也可读取 `skills/shared/known-issues.md` 作为源文件
 3. 读取 `CHANGELOG.md` 了解历史修复
 4. 如果指定了 `--skill`，只保留该 Skill 的遥测记录
 
@@ -155,7 +164,13 @@ mkdir -p "docs/develop/skill-evolution"
 
 #### 6a. known-issues 更新 — safe_auto
 
-对所有新发现的模式，追加到 `skills/shared/known-issues.md` 对应 Skill 的 section。
+对所有新发现的模式，必须更新**所有会读取该 known issue 的副本**，不能只改 `rc:skill-evolve` 自己的私有 reference。
+
+目标解析规则：
+
+1. **源码仓库模式**：如果当前目录存在 `skills/shared/known-issues.md`，先追加到该源文件；然后同步追加到仓库内所有已存在的 `skills/*/references/shared/known-issues.md`，保持打包副本一致。
+2. **copy 安装模式**：如果当前 Skill 位于安装目录（如 `~/.agents/skills/rc-skill-evolve`），扫描同级已安装 Skill：`../*/references/shared/known-issues.md`。把同一条目追加到所有匹配文件，确保 `rc:feature-analyze`、`rc:feature-implement`、`rc:diff-review` 等实际读取 bundled known-issues 的 Skill 都能受益。
+3. **无法覆盖全部副本时**：不要执行 safe_auto 写入。改为在报告中输出 source/release patch 建议，说明需要在源仓库更新 `skills/shared/known-issues.md` 并重新发布/更新安装包。
 
 格式：`- **[YYYY-MM-DD]** <问题描述>。出现 N 次，最近一次在 <project>。`
 
@@ -194,12 +209,13 @@ fi
 ### Step 8: 记录自身遥测
 
 ```bash
-RECORD_SCRIPT=$(ls "$HOME/.claude/plugins/cache/ai-dev-workflow"/*/*/skills/shared/scripts/record-outcome.sh 2>/dev/null | sort -V | tail -1)
-if [ -z "$RECORD_SCRIPT" ]; then
-  for candidate in "skills/shared/scripts/record-outcome.sh" "dev_workflow/skills/shared/scripts/record-outcome.sh"; do
-    [ -f "$candidate" ] && RECORD_SCRIPT="$candidate" && break
-  done
-fi
+for candidate in \
+  "scripts/record-outcome.sh" \
+  "skills/skill-evolve/scripts/record-outcome.sh" \
+  "skills/shared/scripts/record-outcome.sh" \
+  "dev_workflow/skills/shared/scripts/record-outcome.sh"; do
+  [ -f "$candidate" ] && RECORD_SCRIPT="$candidate" && break
+done
 if [ -n "$RECORD_SCRIPT" ] && [ -f "$RECORD_SCRIPT" ]; then
   bash "$RECORD_SCRIPT" skill-evolve <status>
 fi

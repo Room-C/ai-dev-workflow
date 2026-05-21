@@ -1,140 +1,132 @@
 # ai-dev-workflow
 
-Claude Code 插件 — 把「随意对话式编程」变成**结构化 AI 工作流**。
+一套通用 Agent Skills 包，用结构化流程覆盖需求分析、架构设计、实现、代码审查、提交 PR、设计稿转代码和工作流自进化。
 
-一句 slash command 就能驱动完整的开发链路：需求分析 → 架构设计 → 实现 → 代码审查 → 提交 PR。12 个技能、10 个 Agent，即装即用。
+本仓库可以通过 `npx skills` 安装到 Claude Code、Codex、Cursor 等支持 Skills 的 AI Coding 工具。Claude Code 的插件安装方式仍保留为兼容入口，但主分发路径是标准 Agent Skills。
 
 ## 安装
+
+推荐全量安装并复制文件，避免运行时依赖仓库原路径：
+
+```bash
+npx skills add Room-C/ai-dev-workflow -g -a claude-code -a codex --skill '*' --copy -y
+```
+
+安装到所有可检测的工具：
+
+```bash
+npx skills add Room-C/ai-dev-workflow --all --copy
+```
+
+升级：
+
+```bash
+npx skills update -g -y
+```
+
+本地开发验证：
+
+```bash
+npx skills add . --list
+bash scripts/validate-package.sh
+```
+
+Claude Code legacy 插件入口仍可使用：
 
 ```bash
 /plugin marketplace add Room-C/ai-dev-workflow
 /plugin install ai-dev-workflow
 ```
 
-或手动克隆：
+## 兼容模型
+
+每个核心 Skill 都按自包含目录设计：`SKILL.md` 旁边的 `scripts/`、`references/agents/`、`references/shared/` 是该 Skill 的运行时依赖。用 `--copy` 单独安装某个 Skill 时，也应能读取自己的脚本、agent prompt 和共享 schema。
+
+宿主能力分三层：
+
+| 层级 | 能力 | 行为 |
+|------|------|------|
+| Core | Bash、读写文件、grep、git、gh CLI | 所有核心工作流必须可运行 |
+| Agent | 子代理 / task delegation | 可用时委派到 bundled agent prompt；不可用时主上下文 inline 执行 |
+| Optional MCP | Pencil、XcodeBuildMCP、Dart、Cron/scheduler | 可用时启用自动化；不可用时降级为手动截图、手动重跑或报告待办 |
+
+项目规则读取顺序：
+
+1. `AGENTS.md`
+2. `CLAUDE.md`
+3. README、package/workspace 配置、Makefile
+
+不要把宿主项目规则文件当作本包的运行时依赖；它们只是使用者项目的上下文来源。
+
+## 工作流
+
+```
+Feature Pipeline:
+  rc:feature-analyze -> rc:feature-design -> rc:feature-implement -> rc:feature-archive
+
+Quality Gates:
+  rc:diff-review -> rc:commit-pr -> rc:review-pr
+
+Design-to-Code:
+  rc:read-design -> rc:implement-screen -> rc:verify-screen
+
+Self-Evolving:
+  rc:skill-evolve
+```
+
+## 使用示例
+
+Claude Code slash command：
 
 ```bash
-git clone https://github.com/Room-C/ai-dev-workflow.git ~/.claude/plugins/ai-dev-workflow
-```
-
-## 它能做什么
-
-三条流水线分别覆盖功能开发、质量门控和设计稿转代码。
-
-```
-┌─ Feature Pipeline ─────────────────────────────────────────────────┐
-│  analyze → design → implement → archive                            │
-│  需求分析到代码落地，文档驱动全链路                                      │
-└────────────────────────────────────────────────────────────────────┘
-
-┌─ Quality Gates ────────────────────────────────────────────────────┐
-│  diff-review → commit-pr → review-pr                              │
-│  多视角审查 → 规范提交 → PR 闭环跟踪                                  │
-└────────────────────────────────────────────────────────────────────┘
-
-┌─ Design-to-Code (Pencil MCP) ──────────────────────────────────────┐
-│  read-design → implement-screen → verify-screen                   │
-│  设计稿直出原生代码，截图对比验证还原度                                   │
-└────────────────────────────────────────────────────────────────────┘
-```
-
-## 快速开始
-
-```bash
-# 1. 分析需求
 /rc:feature-analyze "用户希望添加消息通知功能" --module notification --version v1
-
-# 2. 设计架构（产出 design.md，含三视角自动审查）
 /rc:feature-design notification --version v1
-
-# 3. 拆解任务 + 逐任务执行（一步到位）
 /rc:feature-implement notification --version v1
-
-# 4. 合并前审查
 /rc:diff-review main
-
-# 5. 提交 + 创建 PR
 /rc:commit-pr main
 ```
 
-## 技能清单
+Codex 或其他 Skills 宿主：
 
-### Feature Pipeline — 功能开发全链路
-
-| 技能 | 说明 | 产出 |
-|------|------|------|
-| `rc:feature-analyze` | 需求分析 — 将模糊需求转化为结构化分析文档 | `analysis.md` |
-| `rc:feature-design` | 架构设计 — 含一致性、可行性、范围守卫三视角自动审查 | `design.md` |
-| `rc:feature-implement` | 功能实现 — 拆解任务 + 逐任务执行，一条命令完成 plan → code | `tasks.md` + 代码变更 |
-| `rc:feature-archive` | 归档 — 更新索引、沉淀模式到 `docs/solutions/` | 归档文档 |
-
-### Quality Gates — 质量门控
-
-| 技能 | 说明 |
-|------|------|
-| `rc:diff-review` | 分支对比审查 — Codex Companion 优先 + Agent 多视角降级，多轮迭代修复，自动沉淀知识 |
-| `rc:commit` | 提交 + 推送到当前分支（不创建 PR） |
-| `rc:commit-pr` | 提交 + 推送 + 创建 PR（Conventional Commits 格式） |
-| `rc:review-pr` | PR 审查 — 先立即审查，仅在有问题时启动跟踪循环；采集 CI annotations + 外部评论并闭环回复 |
-
-### Design-to-Code — Pencil 设计稿转代码
-
-| 技能 | 说明 |
-|------|------|
-| `rc:read-design` | 读取 `.pen` 设计稿，输出结构化设计信息（节点树、样式、截图），纯探索不写代码 |
-| `rc:implement-screen` | 从设计稿生成 UI 页面代码（默认 iOS/SwiftUI，支持 Flutter，支持多页面） |
-| `rc:verify-screen` | 对比设计稿与模拟器实现截图，识别视觉差异并输出修复建议 |
-
-### Self-Evolving — 自进化
-
-| 技能 | 说明 |
-|------|------|
-| `rc:skill-evolve` | 分析执行遥测数据，识别反复失败模式，自动更新 known-issues 注册表，对严重模式提出 SKILL.md 补丁 |
-
-所有 Skill 执行后自动记录遥测到 `~/.ai-dev-workflow/telemetry.jsonl`，`rc:skill-evolve` 基于此数据闭环改进：
-
-```
-Skill 执行 → 遥测记录 → skill-evolve 分析 → known-issues 更新 / SKILL.md 补丁
-                                                    ↓
-                                    下次执行自动规避已知问题
+```text
+使用 rc:feature-analyze 分析这个需求：用户希望添加消息通知功能，module=notification，version=v1。
+使用 rc:feature-design 为 notification v1 生成 design.md。
+使用 rc:feature-implement 执行 notification v1。
+使用 rc:diff-review 对比 main 审查当前分支。
+使用 rc:commit-pr 提交并创建到 main 的 PR。
 ```
 
-## Agent 列表
+## Skill 清单
 
-10 个 Agent 分两类，详见 [AGENTS.md](AGENTS.md)：
+| Skill | 说明 |
+|-------|------|
+| `rc:feature-analyze` | 将模糊需求转化为 `analysis.md` |
+| `rc:feature-design` | 基于分析文档产出 `design.md`，含多视角审查 |
+| `rc:feature-implement` | 拆解 `tasks.md` 并逐任务实现代码变更 |
+| `rc:feature-archive` | 更新特性索引并沉淀 `docs/solutions/` |
+| `rc:diff-review` | 对比目标分支审查、裁决、修复、复审 |
+| `rc:commit` | 提交所有变更并推送当前分支 |
+| `rc:commit-pr` | 提交、推送并创建或复用 PR |
+| `rc:review-pr` | 首轮 PR 审查；有 scheduler 时可跟踪闭环 |
+| `rc:read-design` | 读取 Pencil `.pen` 设计稿 |
+| `rc:implement-screen` | 从 Pencil 设计稿实现 iOS/Flutter 页面 |
+| `rc:verify-screen` | 对比设计稿与实现截图 |
+| `rc:skill-evolve` | 分析遥测并提出工作流改进 |
 
-| 类别 | Agent | 职责 | 调用方 |
-|------|-------|------|--------|
-| 设计类 | `analyst` | 生成设计报告（11 步流程） | `rc:feature-design` |
-| 设计类 | `decomposer` | 任务拆解（6 步流程） | `rc:feature-implement` Phase 1 |
-| 设计类 | `coherence-reviewer` | 内部一致性审查 | `rc:feature-design` Step 3 |
-| 设计类 | `feasibility-reviewer` | 技术可行性审查 | `rc:feature-design` Step 3 |
-| 设计类 | `scope-guardian` | 范围守卫 — 防过度设计 | `rc:feature-design` Step 3 |
-| 工作流 | `task-runner` | 逐任务实现 + 门控验证 | `rc:feature-implement` Phase 2 |
-| 工作流 | `pr-reviewer` | PR 审查、分级修复、推送更新 | `rc:review-pr` |
-| 工作流 | `diff-reviewer` | Diff 审查，产出 findings JSON | `rc:diff-review` Step 4.1 |
-| 工作流 | `validation-reviewer` | Finding 裁决，输出 to_fix/dismissed/deferred | `rc:diff-review` Step 4.2 |
-| 工作流 | `fix-runner` | 单条 to_fix 修复 + 验证 + 回滚/提交 | `rc:diff-review` Step 4.3 |
+## 发布前验证
 
-## 核心原则
+每次调整包结构前运行：
 
-| 原则 | 说明 |
-|------|------|
-| 研究先行 | 写代码前先搜 `docs/solutions/` 和 codebase，不重复造轮子 |
-| 文档链驱动 | analysis.md（做什么）→ design.md（怎么做）→ tasks.md（执行步骤） |
-| 强制门控 | 每条任务验证通过才能标记完成 |
-| 知识复利 | 审查/归档中发现的模式沉淀到 `docs/solutions/`，后续开发自动检索 |
-| 置信度门控 | 审查发现 < 0.50 丢弃，0.50-0.59 仅保留 P1，>= 0.60 保留 |
-| 修复分级 | `safe_auto`（直接修）/ `gated_auto`（修后确认）/ `manual`（仅报告）/ `advisory`（仅记录） |
+```bash
+bash scripts/validate-package.sh
+```
 
-## 知识沉淀
+该脚本会检查：
 
-技能运行中发现的模式级问题自动沉淀到 `docs/solutions/`，使用双轨 schema：
-
-| 轨道 | 适用场景 | 目录 |
-|------|---------|------|
-| Bug Track | 构建错误、运行时错误、配置错误、集成问题 | `docs/solutions/{category}/` |
-| Knowledge Track | 最佳实践、工作流改进、架构决策、性能优化 | `docs/solutions/{category}/` |
+- `npx skills add . --list` 能发现全部 Skill
+- 单个复杂 Skill 用 `--copy` 安装后仍带有 bundled resources
+- 全量安装到 Codex/Claude Code 目标目录可成功
+- 关键文档不再依赖 `.claude/plugins/cache` 作为唯一路径
 
 ## License
 

@@ -10,11 +10,20 @@ model: sonnet
 
 功能开发完成后，归档关键决策、更新全局特性索引、将可复用知识沉淀到 `docs/solutions/`。
 
+## Portable Runtime
+
+本 Skill 必须能通过 `npx skills add --copy` 单独安装后运行。运行时资源优先从当前 Skill 目录读取：
+
+- `references/shared/compound-schema.md`
+- `scripts/record-outcome.sh`
+
+项目规则读取顺序为 `AGENTS.md` -> `CLAUDE.md` -> README/Makefile/package 配置。遥测是 best-effort，失败不得阻塞主流程。
+
 ## 工作流程
 
 ### Step 1: 收集信息
 
-1. **读取 CLAUDE.md**：了解项目结构和文档约定
+1. **读取项目规则文件**：按 `AGENTS.md` -> `CLAUDE.md` -> README/Makefile/package 配置了解项目结构和文档约定
 2. **解析 feature 目录**：
    - `--version` 显式传入时直接使用
    - 未指定 `--version` 且该模块只有一个版本目录时，自动复用
@@ -62,7 +71,7 @@ model: sonnet
 
 将开发过程中发现的可复用知识写入 `docs/solutions/`，使用 compound-engineering 双轨 Schema。
 
-**Schema、category 映射、文件命名、沉淀门槛详见 `skills/shared/compound-schema.md`**（避免与 `rc:diff-review` 重复定义）。
+**Schema、category 映射、文件命名、沉淀门槛详见 `references/shared/compound-schema.md`**（该文件随本 Skill 一起安装）。
 
 本 Skill 只做额外强调：
 
@@ -99,6 +108,10 @@ rm -rf "$FEATURE_DIR/reviews/"
    - [新增] docs/solutions/{category}/{filename}.md — {标题}
    - [跳过] 本次开发未发现需要沉淀的知识
 ```
+
+### Step 7: 记录遥测
+
+优先调用 `scripts/record-outcome.sh` 记录 `feature-archive` 的 success / partial / failed。脚本不存在或执行失败时仅报告，不阻塞归档结果。
 
 ## 原则
 

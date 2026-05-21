@@ -1,79 +1,84 @@
-# ai-dev-workflow Plugin
+# ai-dev-workflow Compatibility Notes
 
 @AGENTS.md
 
-## Overview
+This repository is a generic Agent Skills package. Claude Code plugin support is retained as a legacy compatibility path, but the primary installation and upgrade path is `npx skills add/update`.
 
-This plugin provides a structured AI-assisted development workflow with 11 skills across three pipelines:
+## Package Contract
 
-1. **Feature Pipeline** (`rc:feature-*`) — Requirements → Design → Implement → Archive
-2. **Quality Gates** (`rc:diff-review`, `rc:commit`, `rc:review-pr`) — Code review, commit, PR review (immediate first review + conditional follow-up loop)
-3. **Design-to-Code** (`rc:read-design`, `rc:implement-screen`, `rc:verify-screen`) — Pencil MCP → Native UI implementation → Visual verification
+1. Every installable Skill must be self-contained under `skills/<skill>/`.
+2. Runtime dependencies belong beside the Skill:
+   - `scripts/` for deterministic commands
+   - `references/agents/` for delegated agent prompts
+   - `references/shared/` for shared schemas and known issues
+3. Root `agents/` is a development/legacy mirror only. Do not make a Skill depend on it after `--copy` installation.
+4. Hard-coded host paths are forbidden as primary paths. Use current Skill resources first, then project-local fallbacks, then legacy host cache fallbacks if needed.
 
-## Core Principles
+## Host Context Resolution
 
-All skills follow these principles:
+When a Skill needs project rules, read these in order:
 
-- **Research-First**: Before writing code or designs, search `docs/solutions/` for existing patterns, check git history, grep the codebase
-- **Document Chain**: Each document has a single responsibility — analysis.md (what), design.md (how), tasks.md (steps)
-- **Forced Gates**: Verification must pass before marking tasks complete
-- **Knowledge Compounding**: Patterns discovered during review/archive are persisted to `docs/solutions/` using dual-track schema (Bug Track / Knowledge Track)
-- **Confidence Gating**: Review findings below 0.60 confidence are discarded; ≥ 0.60 kept. Multi-perspective consensus (≥ 2 reviewers find the same issue) is treated as high confidence and always reported.
-- **Autofix Classification**: safe_auto (direct fix) / gated_auto (fix + confirm) / manual (report only) / advisory (log only)
+1. `AGENTS.md`
+2. `CLAUDE.md`
+3. README / Makefile / package manager config / workspace config
+
+When a Skill needs its own bundled files, treat the directory containing its `SKILL.md` as `SKILL_DIR`. If the host does not expose that path, locate it by searching common installed Skill roots for a matching `SKILL.md` name.
+
+Common roots:
+
+```bash
+for root in \
+  "$PWD/skills" \
+  "$HOME/.agents/skills" \
+  "$HOME/.claude/skills" \
+  "$HOME/.codex/skills"; do
+  [ -d "$root" ] && find "$root" -maxdepth 2 -name SKILL.md
+done
+```
 
 ## Execution Telemetry
 
-每个 Skill 执行结束时（无论成功、部分完成还是失败），必须追加一条遥测记录。
+Telemetry is best-effort and must never block the user's main task.
 
-### 记录方式
+Preferred script location:
 
 ```bash
-# 定位遥测脚本
-RECORD_SCRIPT=$(ls "$HOME/.claude/plugins/cache/ai-dev-workflow"/*/*/skills/shared/scripts/record-outcome.sh 2>/dev/null | sort -V | tail -1)
-if [ -z "$RECORD_SCRIPT" ]; then
-  # 本地开发 fallback
-  for candidate in "skills/shared/scripts/record-outcome.sh" "dev_workflow/skills/shared/scripts/record-outcome.sh"; do
-    [ -f "$candidate" ] && RECORD_SCRIPT="$candidate" && break
-  done
-fi
+RECORD_SCRIPT="$SKILL_DIR/scripts/record-outcome.sh"
+```
 
-# 调用（必须检查脚本存在，否则 bash "" 会静默 no-op，skill-evolve 数据出现空洞）
-if [ -z "$RECORD_SCRIPT" ] || [ ! -f "$RECORD_SCRIPT" ]; then
-  echo "WARN: telemetry script not found in cache or local fallbacks; record skipped." >&2
-else
+Fallbacks:
+
+```bash
+for candidate in \
+  "$SKILL_DIR/scripts/record-outcome.sh" \
+  "skills/<skill>/scripts/record-outcome.sh" \
+  "skills/shared/scripts/record-outcome.sh" \
+  "dev_workflow/skills/shared/scripts/record-outcome.sh"; do
+  [ -f "$candidate" ] && RECORD_SCRIPT="$candidate" && break
+done
+```
+
+Call only when the script exists:
+
+```bash
+if [ -n "${RECORD_SCRIPT:-}" ] && [ -f "$RECORD_SCRIPT" ]; then
   bash "$RECORD_SCRIPT" <skill-name> <status> [failure-step] [failure-reason] [fallback-used] || \
-    echo "WARN: telemetry call exited non-zero — record may be incomplete." >&2
+    echo "WARN: telemetry call exited non-zero; record may be incomplete." >&2
 fi
 ```
 
-### 状态定义
+## Optional Capabilities
 
-| 状态 | 含义 |
-|------|------|
-| `success` | 所有步骤按主路径完成 |
-| `partial` | 触发了降级/fallback 但最终完成了核心目标 |
-| `failed` | 未能完成核心目标 |
+- Subagents: use bundled `references/agents/*.md` when available; otherwise run the same workflow inline.
+- Scheduler/Cron: use only when the host exposes it. Without scheduler support, write durable state and tell the user to rerun the Skill.
+- MCP tools: Pencil/Xcode/Dart automation may be used when installed. Without them, request a screenshot, path, or manual setup step rather than failing the whole workflow.
 
-### 已知问题规避
+## Release Validation
 
-每个 Skill 在 Step 1（上下文理解）阶段，应读取 `skills/shared/known-issues.md`（通过插件缓存路径或本地路径），检查是否有与当前执行场景匹配的已知问题，并主动规避。
+Run:
 
-## Prerequisites
+```bash
+bash scripts/validate-package.sh
+```
 
-For skills to work correctly, the host project should have a `CLAUDE.md` with at minimum:
-
-- **Architecture Boundaries** — Tech stack, module structure, import rules
-- **Code Conventions** — Package manager, code style, naming conventions
-- **Verification** — Commands to run for each change type (lint, typecheck, test)
-- **Safety Rails** — NEVER / ALWAYS rules
-
-## Knowledge Compounding Schema
-
-When skills compound knowledge to `docs/solutions/`, they use the compound-engineering dual-track schema:
-
-| Track | Use Case | Directory |
-|-------|----------|-----------|
-| Bug Track | Build errors, runtime errors, config errors, integration issues | `docs/solutions/{category}/` |
-| Knowledge Track | Best practices, workflow improvements, architecture decisions | `docs/solutions/{category}/` |
-
-Category → directory mapping: `build_error` → `build/`, `runtime_error` → `runtime/`, `config_error` → `config/`, `integration_issue` → `integration/`, `best_practice` → `best-practices/`, `workflow_issue` → `workflow/`, `architecture` → `architecture/`, `performance` → `performance/`
+This must pass before claiming the package is installable through `npx skills`.

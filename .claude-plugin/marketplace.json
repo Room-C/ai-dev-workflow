@@ -1,6 +1,6 @@
 {
   "name": "ai-dev-workflow",
-  "description": "Structured AI-assisted development workflow: feature pipeline, quality gates, and Pencil design-to-code.",
+  "description": "Generic Agent Skills package for structured AI-assisted development workflows.",
   "owner": {
     "name": "Room C Studio",
     "url": "https://github.com/Room-C"
@@ -8,8 +8,8 @@
   "plugins": [
     {
       "name": "ai-dev-workflow",
-      "description": "Structured AI-assisted development workflow: feature pipeline, quality gates, and Pencil design-to-code. 12 skills, 10 agents.",
-      "version": "2.2.6",
+      "description": "Generic Agent Skills package: feature pipeline, quality gates, PR review, and Pencil design-to-code. 12 self-contained skills, 10 bundled agents.",
+      "version": "2.3.0",
       "author": {
         "name": "Room C Studio",
         "url": "https://github.com/Room-C"

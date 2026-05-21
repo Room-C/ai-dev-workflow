@@ -10,6 +10,17 @@ model: opus
 
 基于 `analysis.md`（或直接从需求描述）产出结构化设计报告（`design.md`），并通过多视角自动审查确保设计质量。
 
+## Portable Runtime
+
+本 Skill 必须能通过 `npx skills add --copy` 单独安装后运行。运行时资源优先从当前 Skill 目录读取：
+
+- `references/agents/analyst.md`
+- `references/agents/coherence-reviewer.md`
+- `references/agents/feasibility-reviewer.md`
+- `references/agents/scope-guardian.md`
+
+如果宿主支持子代理，按这些 bundled prompt 委派；如果没有子代理能力，主上下文按同一 reference 的步骤 inline 执行。项目规则读取顺序为 `AGENTS.md` -> `CLAUDE.md` -> README/Makefile/package 配置。
+
 ## 工作流程
 
 ### Step 1: 收集上下文
@@ -31,11 +42,11 @@ model: opus
 当 `docs/features/{module}/{version}/analysis.md` 和 `.context-snapshot.md` 都存在时，采用增量研究：
 
 1. **读取 analysis.md**：作为主要输入，获取需求分析全貌
-2. **读取 .context-snapshot.md**：获取 CLAUDE.md 关键约束、已有方案、代码引用、术语表
+2. **读取 .context-snapshot.md**：获取项目规则关键约束、已有方案、代码引用、术语表
 3. **补充性 Grep**（可选）：仅搜索 analysis.md 中提到但快照未覆盖的接口/模型/模块
 
 ⏭ 跳过以下操作（信息已包含在快照和 analysis.md 中）：
-- 完整读取 CLAUDE.md
+- 完整读取项目规则文件
 - 搜索 `docs/solutions/`
 - 搜索 git log
 - 全量 Grep 代码库
@@ -44,7 +55,7 @@ model: opus
 
 当直接从需求描述出发，或 `.context-snapshot.md` 不存在时，执行完整研究：
 
-1. **读取 CLAUDE.md**：了解项目架构边界、技术栈、代码规范、验证命令
+1. **读取项目规则文件**：按 `AGENTS.md` -> `CLAUDE.md` -> README/Makefile/package 配置的顺序了解架构边界、技术栈、代码规范、验证命令
 2. **读取 analysis.md**：如果存在 `docs/features/{module}/{version}/analysis.md`，作为主要输入
 3. **搜索 `docs/solutions/`**：查找相关的已有解决方案、设计模式、经验教训
 4. **搜索 git log**：查看最近相关的变更历史
@@ -54,7 +65,7 @@ model: opus
 
 ### Step 2: 撰写设计报告
 
-默认派发 `ai-dev-workflow:design:analyst` 子代理起草 `design.md`；仅在极简单场景下可直接在主上下文完成。
+读取 `references/agents/analyst.md`。默认用宿主子代理按该 prompt 起草 `design.md`；若宿主没有子代理能力，主上下文按该 reference inline 完成。仅在极简单场景下可不读取 analyst reference，直接完成。
 
 输出路径：`docs/features/{module}/{version}/design.md`；如果指定了 `side`（如 `backend`、`frontend`），则输出到 `docs/features/{module}/{version}/{side}/design.md`
 
@@ -69,7 +80,7 @@ model: opus
 - `核心流程` 使用 Mermaid，覆盖正常路径和关键异常路径
 - `项目结构与技术决策` 既要说明目录职责，也要说明依赖方向和选择理由
 - `暂不实现` 必须清晰列红线，并说明是否预留扩展空间
-- 如需新增第三方依赖，必须通过 WebSearch 确认最新稳定版本，并写入依赖清单
+- 如需新增第三方依赖，优先通过宿主搜索/WebFetch 确认最新稳定版本；没有联网工具时用包管理器元数据或明确标注"未联网验证"，并写入依赖清单
 
 ### Step 3: 设计审查
 
@@ -83,10 +94,18 @@ model: opus
 
 #### Step 3.2: 执行审查（文件驱动）
 
-为每个启用的审查员启动并行 Agent 子代理。传入参数包含：
+读取每个启用审查员的 bundled reference，并在可用时启动并行子代理；没有子代理能力时，主上下文按 reference 顺序执行审查。传入/使用的参数包含：
 - `design_path`：design.md 文件路径
 - `output_dir`：与 design.md 同级的 `reviews/` 子目录（如 design.md 在 `{module}/{version}/{side}/design.md`，则为 `docs/features/{module}/{version}/{side}/reviews/`；无 side 时为 `docs/features/{module}/{version}/reviews/`）
-- 其他审查员特定参数（`claude_md_path`、`requirement_path` 等）
+- 其他审查员特定参数（`project_rules_path`、`requirement_path` 等）
+
+Bundled reference 映射：
+
+| 审查员 | Reference |
+|--------|-----------|
+| 一致性 | `references/agents/coherence-reviewer.md` |
+| 可行性 | `references/agents/feasibility-reviewer.md` |
+| 范围守卫 | `references/agents/scope-guardian.md` |
 
 每个审查员执行后：
 1. 自行从文件读取 design.md（不依赖主上下文传递）
@@ -195,7 +214,7 @@ tags: [design, ...]
 ```
 ✅ design.md 已定稿。
 
-📋 下一步：运行 /rc:feature-implement {module} --version {version} 将设计拆解为任务清单并逐任务实现。
+📋 下一步：运行 rc:feature-implement {module} --version {version} 将设计拆解为任务清单并逐任务实现。
 如本次设计是 side-specific，再补上对应的 `--side <side>`。
 ```
 

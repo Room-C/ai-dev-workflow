@@ -10,6 +10,15 @@ model: sonnet
 
 将模糊的功能需求转化为结构化分析文档（`analysis.md`），为后续设计阶段提供明确输入。
 
+## Portable Runtime
+
+本 Skill 必须能通过 `npx skills add --copy` 单独安装后运行。运行时资源优先从当前 Skill 目录读取：
+
+- `references/shared/known-issues.md`
+- `scripts/record-outcome.sh`
+
+项目规则读取顺序为 `AGENTS.md` -> `CLAUDE.md` -> README/Makefile/package 配置。遥测是 best-effort，失败不得阻塞主流程。
+
 ## 输入形式
 
 用户可以通过以下任意方式描述需求：
@@ -27,13 +36,14 @@ model: sonnet
 
 在分析之前，先建立上下文基础：
 
-1. **读取 CLAUDE.md**：了解项目架构边界、技术栈、代码规范
-2. **搜索 `docs/solutions/`**：查找是否有相关的已有解决方案或经验教训
-3. **搜索 git log**：查看最近相关的变更历史（`git log --oneline -20 --grep="<关键词>"`）
-4. **Grep 代码库**：搜索与需求相关的现有代码、接口、模型
+1. **读取项目规则文件**：按 `AGENTS.md` -> `CLAUDE.md` -> README/Makefile/package 配置了解项目架构边界、技术栈、代码规范
+2. **读取 bundled known issues**：读取 `references/shared/known-issues.md`，主动规避匹配场景
+3. **搜索 `docs/solutions/`**：查找是否有相关的已有解决方案或经验教训
+4. **搜索 git log**：查看最近相关的变更历史（`git log --oneline -20 --grep="<关键词>"`）
+5. **Grep 代码库**：搜索与需求相关的现有代码、接口、模型
 
 然后精读需求输入：
-- 如果是 URL，使用 WebFetch 获取内容
+- 如果是 URL，优先用宿主 WebFetch；没有联网工具时用 `gh`/`curl`/浏览器能力，仍不可用则请用户提供内容
 - 如果是文档路径，读取文件内容
 - 提炼核心目标、约束、用户场景
 - 标注模糊点和假设（`[假设]`）
@@ -105,7 +115,7 @@ source: feature-analyze
 date: [YYYY-MM-DD]
 ---
 
-## CLAUDE.md 关键约束
+## 项目规则关键约束
 - [最多 5 条与本功能直接相关的架构约束/技术栈/规范]
 
 ## 已有解决方案
@@ -202,4 +212,4 @@ tags: [analysis, ...]
 
 ## 收尾
 
-结束前按项目 `CLAUDE.md` 的 "Execution Telemetry" 章节记录遥测；若脚本不存在，可跳过但要在输出中明确说明。
+结束前优先调用 `scripts/record-outcome.sh` 记录遥测；若脚本不存在或执行失败，可跳过但要在输出中明确说明。
