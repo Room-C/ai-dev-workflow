@@ -1,7 +1,7 @@
 ---
 name: rc:diff-review
 description: 对比目标分支进行代码审查并自动化修复，直到无 P1/P2 问题。Host Review/Inline Review → Validation → Auto-fix → 重审，最多 5 轮。当用户说"review diff"、"帮我 review"、"review 这个分支"时触发。
-argument-hint: "[target-branch] [--depth quick|standard|deep] [--focus security,performance] [--since commit] [--path filter] [--no-compound] [--no-commit] [--keep-intermediates]"
+argument-hint: "[target-branch] [--depth quick|standard|deep] [--focus S1,S2,...] [--since commit] [--path filter] [--no-compound] [--no-commit] [--keep-intermediates]"
 allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Agent, AskUserQuestion
 model: sonnet
 ---

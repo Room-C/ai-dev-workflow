@@ -45,7 +45,7 @@ tools: Read, Write, Edit, Glob, Grep, Bash
 ```bash
 META=$(gh pr view "{pr_number}" --json state,headRefOid,comments,reviews 2>&1) || {
   echo "ERROR: gh pr view failed: $META" >&2
-  osascript -e 'display notification "PR 元数据获取失败（详见日志）" with title "Review Agent"'
+  command -v osascript >/dev/null && osascript -e 'display notification "PR 元数据获取失败（详见日志）" with title "Review Agent"'
   return REVIEW_STOPPED
 }
 STATE=$(echo "$META" | jq -r '.state')
@@ -67,7 +67,7 @@ CURR_INLINE=$(gh api "repos/{repo}/pulls/{pr_number}/comments" --jq 'length' 2>&
 
 ```bash
 if [ "$STATE" != "OPEN" ]; then
-  osascript -e 'display notification "PR 已关闭或合并" with title "Review Agent"'
+  command -v osascript >/dev/null && osascript -e 'display notification "PR 已关闭或合并" with title "Review Agent"'
   return REVIEW_STOPPED
 fi
 ```
@@ -79,7 +79,7 @@ ROUND=$(jq -r '.round' "{state_file}")
 MAX=$(jq -r '.maxRounds' "{state_file}")
 ROUND=$((ROUND + 1))
 if [ "$ROUND" -gt "$MAX" ]; then
-  osascript -e 'display notification "已达最大审查轮次" with title "Review Agent"'
+  command -v osascript >/dev/null && osascript -e 'display notification "已达最大审查轮次" with title "Review Agent"'
   return REVIEW_STOPPED
 fi
 jq --argjson r "$ROUND" '.round = $r' "{state_file}" > "{state_file}.tmp" && mv "{state_file}.tmp" "{state_file}"
@@ -349,7 +349,7 @@ fi
 修复完成、达最大轮次、PR 关闭等关键节点发送：
 
 ```bash
-osascript -e 'display notification "<内容>" with title "Review Agent" sound name "Glass"'
+command -v osascript >/dev/null && osascript -e 'display notification "<内容>" with title "Review Agent" sound name "Glass"'
 ```
 
 ## 硬性约束
