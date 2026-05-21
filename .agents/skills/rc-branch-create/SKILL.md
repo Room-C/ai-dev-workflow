@@ -1,6 +1,7 @@
 ---
 name: rc-branch-create
 description: Create the same Git branch in the main repository and all submodules from a base branch. Use when the user asks "rc:branch create <newBranch>" or "rc:branch create <originBranch> <newBranch>".
+argument-hint: "[S1] S2"
 ---
 
 # rc:branch create
@@ -29,8 +30,9 @@ The script itself does not parse `rc:branch create`; that prefix is the semantic
 
 - Always call `scripts/branch-create.sh` from this Skill directory.
 - If any repository is dirty, stop. Dirty means staged, unstaged, or untracked files in the main repository or any submodule.
-- The script must check the main repository and all recursively discovered Git submodules.
+- The script must check the main repository and all recursively configured Git submodules. If a configured submodule is not initialized, stop before changing branches.
 - The script must refresh `origin` refs before checking whether `originBranch` or `origin/newBranch` exists.
+- Because the script fast-forwards from `origin`, `originBranch` must exist on `origin` after refs are refreshed. Local-only base branches are rejected before any checkout.
 - The script must use `git pull --ff-only`; never use a normal pull that can create a merge commit.
 - Never use `git reset --hard`.
 - Never delete a remote branch.

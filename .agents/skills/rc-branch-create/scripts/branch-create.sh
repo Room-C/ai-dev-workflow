@@ -53,19 +53,31 @@ run_git() {
 }
 
 collect_repos() {
-  local submodules
-  local repo_path
-
   REPOS=(".")
-  submodules="$(git submodule foreach --recursive --quiet 'pwd' 2>/dev/null)" || {
-    die 1 "failed to enumerate git submodules"
-  }
+  collect_submodules_for_repo "$ROOT"
+}
 
-  while IFS= read -r repo_path; do
-    [ -n "$repo_path" ] || continue
-    REPOS+=("$repo_path")
+collect_submodules_for_repo() {
+  local repo="$1"
+  local line
+  local submodule_path
+  local submodule_repo
+
+  [ -f "$repo/.gitmodules" ] || return 0
+
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    submodule_path="${line#* }"
+    submodule_repo="$repo/$submodule_path"
+
+    if ! git -C "$submodule_repo" rev-parse --show-toplevel >/dev/null 2>&1; then
+      die 1 "submodule '$(repo_label "$submodule_repo")' is not initialized; run 'git submodule update --init --recursive' before creating branches"
+    fi
+
+    REPOS+=("$submodule_repo")
+    collect_submodules_for_repo "$submodule_repo"
   done <<EOF
-$submodules
+$(git -C "$repo" config --file .gitmodules --get-regexp '^submodule\..*\.path$' 2>/dev/null || true)
 EOF
 }
 
@@ -101,7 +113,7 @@ branch_exists_remote() {
 refresh_remote_refs() {
   local repo="$1"
 
-  run_git "$repo" fetch --prune origin || {
+  run_git "$repo" fetch --prune origin '+refs/heads/*:refs/remotes/origin/*' || {
     die 1 "failed to refresh origin refs in $(repo_label "$repo")"
   }
 }
@@ -109,11 +121,11 @@ refresh_remote_refs() {
 ensure_origin_branch_exists() {
   local repo="$1"
 
-  if branch_exists_local "$repo" "$ORIGIN_BRANCH" || branch_exists_remote "$repo" "$ORIGIN_BRANCH"; then
+  if branch_exists_remote "$repo" "$ORIGIN_BRANCH"; then
     return 0
   fi
 
-  die 3 "origin branch '$ORIGIN_BRANCH' was not found in $(repo_label "$repo")"
+  die 3 "origin branch 'origin/$ORIGIN_BRANCH' was not found in $(repo_label "$repo") after refreshing origin refs"
 }
 
 checkout_origin_branch() {
