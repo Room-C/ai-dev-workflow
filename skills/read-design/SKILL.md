@@ -14,6 +14,10 @@ model: haiku
 
 **你只读取和分析，不写代码、不修改任何文件。**
 
+## Tool Compatibility
+
+Pencil MCP 是本 Skill 的核心依赖。若宿主没有 `mcp__pencil__*` 工具，不能解密或直接读取 `.pen` 文件；此时应要求用户启用 Pencil MCP，或提供从 Pencil 导出的节点 JSON、布局快照和截图，再基于这些导出物输出报告。不要尝试用普通文件读取方式解析 `.pen`。
+
 ## 输入参数
 
 | 参数 | 必填 | 说明 |

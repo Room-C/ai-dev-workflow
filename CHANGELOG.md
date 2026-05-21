@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.3.0 — 2026-05-21
+
+### Changed
+- **Packaging**: 整改为通用 Agent Skills 包，主安装/升级路径切换为 `npx skills add/update`，Claude Code plugin 入口保留为 legacy compatibility。
+- **Runtime resources**: 将复杂 Skill 依赖的 agent prompt、known issues、compound schema 和遥测脚本复制到对应 Skill 的 `references/` / `scripts/` 下，支持 `--copy` 单技能安装。
+- **Compatibility**: 子代理、Cron、Pencil/Xcode/Dart MCP 改为可选能力；缺失时降级为 inline/manual fallback，不再把 Claude plugin cache 或 Codex companion 作为硬依赖。
+
 ## 2.2.5 — 2026-04-21
 
 ### Changed
