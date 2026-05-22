@@ -48,7 +48,7 @@ INSTALLED_COUNT="$(find "$TMP_HOME/.agents/skills" -maxdepth 2 -name SKILL.md | 
 test "$INSTALLED_COUNT" = "13"
 
 echo "== portability grep"
-if grep -rE '\.claude/plugins/cache|codex-companion|disable-model-invocation' skills/*/SKILL.md skills/*/references agents .agents/skills; then
+if grep -rE '\.claude/plugins/cache|codex-companion|disable-model-invocation' skills/*/SKILL.md skills/*/references skills/*/scripts agents; then
   echo "ERROR: hard-coded legacy host dependency found in runtime docs." >&2
   exit 1
 fi
