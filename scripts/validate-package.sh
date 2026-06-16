@@ -36,6 +36,9 @@ echo "== copy install: claude-code / single complex skill"
 HOME="$TMP_HOME" npx --yes skills add "$ROOT" -g -a claude-code --skill rc:review-pr --copy -y >"$LOG_DIR/install-review-pr.log"
 find "$TMP_HOME" -path "*/rc-review-pr/SKILL.md" -print -quit | grep -q .
 find "$TMP_HOME" -path "*/rc-review-pr/references/agents/pr-reviewer.md" -print -quit | grep -q .
+find "$TMP_HOME" -path "*/rc-review-pr/scripts/pr-diff-filter.sh" -print -quit | grep -q .
+find "$TMP_HOME" -path "*/rc-review-pr/scripts/notify.sh" -print -quit | grep -q .
+find "$TMP_HOME" -path "*/rc-review-pr/scripts/record-outcome.sh" -print -quit | grep -q .
 
 echo "== copy install: codex / branch-create"
 HOME="$TMP_HOME" npx --yes skills add "$ROOT" -g -a codex --skill rc-branch-create --copy -y >"$LOG_DIR/install-branch-create.log"
