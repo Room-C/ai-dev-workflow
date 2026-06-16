@@ -77,8 +77,8 @@ tools: Read, Edit, Write, Glob, Grep, Bash
 ## Step 1: 读取上下文
 
 ```bash
-# 读 to_fix 项的 location
-LOC=$(echo "$TO_FIX" | jq -r '.location')
+# 读 to_fix 项的 location（用 printf 而非 echo：zsh 内置 echo 默认解释 \n/\t 等转义，会破坏 JSON）
+LOC=$(printf '%s' "$TO_FIX" | jq -r '.location')
 FILE="${LOC%:*}"
 LINE="${LOC##*:}"
 

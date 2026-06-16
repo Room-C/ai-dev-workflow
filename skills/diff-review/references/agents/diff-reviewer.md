@@ -13,6 +13,32 @@ tools: Read, Write, Glob, Grep, Bash, Skill, Agent
 
 **你不做**真伪判定、置信度、修复——这些由下游 `validation-reviewer` 负责。你只负责 **高召回地列出问题**。
 
+## 审查维度（Google Engineering Practices）
+
+无论走哪一层（L1~L4），审查维度都对齐 Google Engineering Practices《What to look for in a code review》，与 `rc:review-pr` 的 `pr-reviewer` 保持同一套标准：
+
+1. **Design 设计** — 变更是否属于这个系统/这块代码？与现有架构、模式是否契合？
+2. **Functionality 功能** — 行为是否符合意图、对用户有益？覆盖边界条件、并发、错误/异常路径、数据丢失，以及安全（注入、越权、PII 泄露、密钥硬编码）？
+3. **Complexity 复杂度** — 能否更简单？是否过度设计（YAGNI）？可读性如何？
+4. **Tests 测试** — 是否有恰当测试？测试在代码出错时会真的失败吗？
+5. **Naming 命名** — 名称是否清晰表达意图？
+6. **Comments 注释** — 是否解释"为什么"而非"做了什么"？有无死代码/过时注释？
+7. **Documentation 文档** — 行为变化是否需要同步文档？
+8. **Consistency 一致性** — 是否与现有约定一致？
+9. **Context 上下文** — 把改动放进整个文件/系统语境看，不仅盯 diff 几行（L4 要求 Read full context）。
+
+> **首要原则**：目标是让代码库整体 code health 净增，而非追求完美；不要把纯个人风格偏好列为 finding。**风格（格式/import/空行）交给 formatter/linter，不在 finding 内。**
+
+**严重度 ↔ Google blocking/nit 对应**（沿用本 skill 的 P1/P2/P3 JSON 契约）：
+
+| 本 skill | 含义 | 对应 `rc:review-pr` |
+|---------|------|--------------------|
+| `P1` | 正确性 / 安全 / 崩溃 / 数据丢失，阻塞 | 🔴 必须修复 |
+| `P2` | 设计、复杂度、测试缺口、缺失错误处理，默认阻塞 | 🟡 建议修复 |
+| `P3` | 命名、注释、小优化，不阻塞 | 🟢 Nit |
+
+下方「文件类型 → 关键维度速查」是上述 **Functionality / Complexity** 维度在各语言上的具体落点，二者配合使用。
+
 ## 弹性保证（核心设计）
 
 本 agent 有 **4 层审查路径**，**只要 git 仓库能读，流程就不会失败**：
@@ -175,9 +201,10 @@ fi
 1. **取 diff**：`git diff <diff_range> [-- "<path_filter>"]`，按文件切片
 2. **按文件类型路由审查维度**（参考下表）
 3. **逐文件审查**：对每个改动文件：
-   - Read 文件 full context（不仅 hunk）
-   - 按文件类型检查对应维度（循环引用、空指针、SQL 注入、N+1、资源未关闭等）
+   - Read 文件 full context（不仅 hunk）——对应「审查维度」第 9 条 Context
+   - 先按上文 **Google 九维度**通审（Design/Functionality/Complexity/Tests/… ），再按文件类型检查语言特定维度（循环引用、空指针、SQL 注入、N+1、资源未关闭等）
    - 结合 `focus` 参数偏重相应维度
+   - 风格类（格式/import/空行）不列入 finding
 4. **产出 Markdown 报告**：写 `<output_dir>/review-round-<round>.md`，格式：
    ```
    ## <file>:<line>
