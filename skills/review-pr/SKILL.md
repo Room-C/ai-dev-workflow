@@ -106,11 +106,12 @@ done
    ```bash
    PR_META=$(gh pr view "$PR_NUMBER" ${URL_REPO:+--repo "$URL_REPO"} \
      --json number,headRefName,baseRefName,isCrossRepository,maintainerCanModify,headRepositoryOwner,headRepository)
-   head_branch=$(echo "$PR_META" | jq -r '.headRefName')
-   base_branch=$(echo "$PR_META" | jq -r '.baseRefName')
-   is_cross_repository=$(echo "$PR_META" | jq -r '.isCrossRepository')
-   maintainer_can_modify=$(echo "$PR_META" | jq -r '.maintainerCanModify')
-   head_repo=$(echo "$PR_META" | jq -r '(.headRepositoryOwner.login) + "/" + (.headRepository.name)')
+   # 用 printf 而非 echo：zsh 内置 echo 默认解释 \n/\t 等转义，会破坏 JSON 字符串
+   head_branch=$(printf '%s' "$PR_META" | jq -r '.headRefName')
+   base_branch=$(printf '%s' "$PR_META" | jq -r '.baseRefName')
+   is_cross_repository=$(printf '%s' "$PR_META" | jq -r '.isCrossRepository')
+   maintainer_can_modify=$(printf '%s' "$PR_META" | jq -r '.maintainerCanModify')
+   head_repo=$(printf '%s' "$PR_META" | jq -r '(.headRepositoryOwner.login) + "/" + (.headRepository.name)')
    ```
 5. 记录：`pr_number`、`head_branch`、`base_branch`、`repo`、`first_review_quality`、`is_cross_repository`、`maintainer_can_modify`、`head_repo`
 6. 计算**跨平台 + 跨 repo 唯一**的状态文件路径（不写死 `/tmp`；文件名含 repo slug，避免 `repoA#42` 与 `repoB#42` 互相污染）：
@@ -190,11 +191,12 @@ notify() {
 # 捕获 baseline：HEAD SHA + comment/review 计数 + CI check 指纹
 META=$(gh pr view <N> --repo "$repo" --json headRefOid,comments,reviews,statusCheckRollup) \
   || { echo "ERROR: cannot fetch baseline"; exit 1; }
-HEAD_SHA=$(echo "$META" | jq -r '.headRefOid')
-COMMENT_COUNT=$(echo "$META" | jq -r '.comments | length')
-REVIEW_COUNT=$(echo "$META" | jq -r '.reviews | length')
+# 用 printf 而非 echo：zsh 内置 echo 默认解释 \n/\t 等转义，会破坏 comments/reviews 正文里的 JSON
+HEAD_SHA=$(printf '%s' "$META" | jq -r '.headRefOid')
+COMMENT_COUNT=$(printf '%s' "$META" | jq -r '.comments | length')
+REVIEW_COUNT=$(printf '%s' "$META" | jq -r '.reviews | length')
 # CI/check-run 指纹，必须与 agent Step 0.1 的算法一致，否则首个 tick 必触发完整审查
-CHECKS_SIG=$(echo "$META" | jq -r \
+CHECKS_SIG=$(printf '%s' "$META" | jq -r \
   '[.statusCheckRollup[]? | {n:(.name // .context // ""), c:(.conclusion // .state // "")}] | sort_by(.n) | tostring' \
   | { shasum -a 256 2>/dev/null || sha256sum 2>/dev/null || cksum; } | awk '{print $1}' | cut -c1-16)
 # inline review comments 必须单独拉（gh pr view 不含）

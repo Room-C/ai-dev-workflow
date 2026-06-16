@@ -200,15 +200,17 @@ META=$(gh pr view "{pr_number}" --repo "{repo}" \
   notify "PR 元数据获取失败（详见日志）"
   return REVIEW_STOPPED
 }
-STATE=$(echo "$META" | jq -r '.state')
-CURR_SHA=$(echo "$META" | jq -r '.headRefOid')
-CURR_COMMENTS=$(echo "$META" | jq -r '.comments | length')
-CURR_REVIEWS=$(echo "$META" | jq -r '.reviews | length')
+# 用 printf 而非 echo 喂给 jq：zsh 的内置 echo 默认解释 \n/\t 等转义序列，
+# 会把 comments/reviews 正文里转义的换行还原成裸控制字符，导致 jq 解析整份 JSON 失败
+STATE=$(printf '%s' "$META" | jq -r '.state')
+CURR_SHA=$(printf '%s' "$META" | jq -r '.headRefOid')
+CURR_COMMENTS=$(printf '%s' "$META" | jq -r '.comments | length')
+CURR_REVIEWS=$(printf '%s' "$META" | jq -r '.reviews | length')
 HEAD_SHA="$CURR_SHA"
 
 # CI/check-run 指纹：把每个 check 的 (name, conclusion/state) 排序后哈希。
 # CI 从 pending 变 failed（无新 commit/comment）时此值会变，避免被 gate 误跳过。
-CURR_CHECKS=$(echo "$META" | jq -r \
+CURR_CHECKS=$(printf '%s' "$META" | jq -r \
   '[.statusCheckRollup[]? | {n:(.name // .context // ""), c:(.conclusion // .state // "")}] | sort_by(.n) | tostring' \
   | { shasum -a 256 2>/dev/null || sha256sum 2>/dev/null || cksum; } | awk '{print $1}' | cut -c1-16)
 
@@ -282,7 +284,8 @@ jq --argjson r "$ROUND" --arg s "$CURR_SHA" --arg ck "$CURR_CHECKS" \
 fetch_or_stop() {
   local out
   out=$(gh api "$@" 2>&1) || { echo "ERROR: gh api failed for $*: $out" >&2; return 1; }
-  echo "$out"
+  printf '%s\n' "$out"   # 不用 echo：zsh 的内置 echo 默认解释 \n/\t 等转义，
+                         # 会把 JSON 字符串里转义的换行还原成裸控制字符，破坏 JSON 语法
 }
 ```
 
@@ -293,7 +296,7 @@ fetch_or_stop() {
    if [ "{mode}" = "first_review" ]; then
      META=$(gh pr view "{pr_number}" --repo "{repo}" --json headRefOid,comments,reviews 2>&1) \
        || { echo "ERROR: gh pr view failed: $META" >&2; return REVIEW_STOPPED; }
-     HEAD_SHA=$(echo "$META" | jq -r '.headRefOid')
+     HEAD_SHA=$(printf '%s' "$META" | jq -r '.headRefOid')
    fi
    ```
 1. **获取过滤后的 diff**（剔除 lock / 生成物 / 迁移 / 压缩产物 / 二进制资源）。优先用 bundled 脚本，缺省时退回原始 diff：
@@ -322,7 +325,7 @@ fetch_or_stop() {
      -q '.check_runs[] | select(.conclusion == "failure" or .conclusion == "action_required")') \
      || return REVIEW_STOPPED
    if [ -n "$CHECK_RUNS" ]; then
-     for CHECK_RUN_ID in $(echo "$CHECK_RUNS" | jq -r '.id'); do
+     for CHECK_RUN_ID in $(printf '%s' "$CHECK_RUNS" | jq -r '.id'); do
        fetch_or_stop repos/{repo}/check-runs/"$CHECK_RUN_ID"/annotations --paginate || return REVIEW_STOPPED
      done
    fi
