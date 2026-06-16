@@ -6,6 +6,8 @@ ORIGIN_BRANCH=""
 NEW_BRANCH=""
 ROOT=""
 REPOS=()
+REPO_PARENTS=()
+REPO_PATHS=()
 
 usage() {
   cat >&2 <<'USAGE'
@@ -54,6 +56,8 @@ run_git() {
 
 collect_repos() {
   REPOS=(".")
+  REPO_PARENTS=("")
+  REPO_PATHS=("")
   collect_submodules_for_repo "$ROOT"
 }
 
@@ -75,6 +79,8 @@ collect_submodules_for_repo() {
     fi
 
     REPOS+=("$submodule_repo")
+    REPO_PARENTS+=("$repo")
+    REPO_PATHS+=("$submodule_path")
     collect_submodules_for_repo "$submodule_repo"
   done <<EOF
 $(git -C "$repo" config --file .gitmodules --get-regexp '^submodule\..*\.path$' 2>/dev/null || true)
@@ -199,6 +205,42 @@ create_new_branch() {
   }
 }
 
+# After every repo has switched to NEW_BRANCH, each submodule's HEAD may sit on
+# a different commit than the gitlink its parent records (we fast-forwarded it to
+# origin/<base>). That mismatch makes a later `git submodule update` reset the
+# submodule back to the old commit, silently detaching it off NEW_BRANCH.
+# Staging each submodule pointer in its immediate parent removes the mismatch so
+# the branch checkout sticks. Process deepest-first so nested parents see their
+# own child pointer changes before their parent pointer is staged.
+record_submodule_pointers() {
+  local idx
+  local sub
+  local parent
+  local path
+
+  for ((idx = ${#REPOS[@]} - 1; idx >= 1; idx--)); do
+    sub="${REPOS[$idx]}"
+    parent="${REPO_PARENTS[$idx]}"
+    path="${REPO_PATHS[$idx]}"
+
+    run_git "$parent" add -- "$path" || {
+      die 1 "failed to record submodule pointer for $(repo_label "$sub") in its parent repository"
+    }
+  done
+}
+
+has_nested_submodules() {
+  local idx
+
+  for ((idx = 1; idx < ${#REPOS[@]}; idx++)); do
+    if [ "${REPO_PARENTS[$idx]}" != "$ROOT" ]; then
+      return 0
+    fi
+  done
+
+  return 1
+}
+
 print_summary() {
   local repo
   local current_branch
@@ -210,6 +252,17 @@ print_summary() {
     }
     printf '  %s -> %s\n' "$(repo_label "$repo")" "$current_branch"
   done
+
+  if [ "${#REPOS[@]}" -gt 1 ]; then
+    printf '\nNote: updated submodule pointers are staged in their parent repositories\n'
+    printf 'so that a later "git submodule update" keeps the submodules on %s instead\n' "$NEW_BRANCH"
+    printf 'of detaching them. Commit these staged pointers in the repositories where they appear.\n'
+
+    if has_nested_submodules; then
+      printf '\nWARNING: nested submodules detected. Commit staged pointer changes bottom-up:\n'
+      printf 'deepest submodules first, then their parents, then the top-level repository.\n'
+    fi
+  fi
 }
 
 validate_branch_name() {
@@ -310,6 +363,8 @@ main() {
   for repo in "${REPOS[@]}"; do
     create_new_branch "$repo"
   done
+
+  record_submodule_pointers
 
   print_summary
 }
