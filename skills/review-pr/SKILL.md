@@ -143,7 +143,7 @@ state_file: <仅 follow_up 传，指向已存在的 STATE_FILE>
 ```
 
 - `first_review` 不传 `state_file`。
-- `follow_up`（接续重跑）传 `state_file`，由 agent 走 Step 0 变更门控；若返回 `REVIEW_DONE`/`REVIEW_STOPPED`，删除状态文件。
+- `follow_up`（接续重跑）传 `state_file`，由 agent 走 Step 0 变更门控；若返回 `REVIEW_DONE`，删除状态文件。若返回 `REVIEW_STOPPED`，**编排器不要自行删除**——agent 已经区分了终态（PR 关闭/合并、达最大轮次，agent 内部已清理）和临时失败（`gh`/`git` 调用失败，状态文件需保留以便重试），由 agent 负责。
 
 ## Step 3: 根据返回信号决定下一步
 
@@ -154,7 +154,7 @@ state_file: <仅 follow_up 传，指向已存在的 STATE_FILE>
 | `REVIEW_CLEAN` | 幂等更新总结为 `✅ 自动审查通过`（见下 `upsert_summary`）+ `notify` + 删除状态文件（若有）+ **结束**（不创建跟踪任务） |
 | `REVIEW_MANUAL_ONLY` | 幂等更新总结为 `⏸️ 全部为人工决策项，处理完后手动重跑 rc:review-pr` + `notify` + **结束**（轮询无法推进 manual 项） |
 | `REVIEW_DONE` | （follow_up 接续）`notify` + 删除状态文件 + **结束** |
-| `REVIEW_STOPPED` | （follow_up 接续）`notify` + 删除状态文件 + **结束** |
+| `REVIEW_STOPPED` | （follow_up 接续）`notify` + **结束**（状态文件是否删除由 agent 内部按终态/临时失败区分决定，编排器不重复删除） |
 | `REVIEW_SKIPPED` | （follow_up 接续）本轮无变更，保留状态文件，提示稍后再重跑 / 等下一次 scheduler tick |
 | `REVIEW_FIXED` | **仅 first_review** 需创建状态文件（含 baseline）；follow_up 时 agent 已就地更新。有 scheduler 则创建/保留跟踪任务，否则提示手动重跑 |
 | `REVIEW_MANUAL` | 同上：first_review 创建 baseline；follow_up 保留。有 scheduler 则跟踪，否则提示手动重跑 |
@@ -196,7 +196,7 @@ REVIEW_COUNT=$(echo "$META" | jq -r '.reviews | length')
 # CI/check-run 指纹，必须与 agent Step 0.1 的算法一致，否则首个 tick 必触发完整审查
 CHECKS_SIG=$(echo "$META" | jq -r \
   '[.statusCheckRollup[]? | {n:(.name // .context // ""), c:(.conclusion // .state // "")}] | sort_by(.n) | tostring' \
-  | { shasum -a 256 2>/dev/null || sha256sum 2>/dev/null || cksum; } | cut -c1-16)
+  | { shasum -a 256 2>/dev/null || sha256sum 2>/dev/null || cksum; } | awk '{print $1}' | cut -c1-16)
 # inline review comments 必须单独拉（gh pr view 不含）
 INLINE_COUNT=$(gh api "repos/<repo>/pulls/<N>/comments" --jq 'length') || { echo "ERROR: cannot fetch inline baseline"; exit 1; }
 
@@ -229,7 +229,9 @@ fi
   head_repo: <owner/name>
 
 根据 agent 返回信号处理：
-- REVIEW_DONE / REVIEW_STOPPED → CronDelete 取消本任务 + 删除状态文件 + 记录遥测
+- REVIEW_DONE → CronDelete 取消本任务 + 删除状态文件 + 记录遥测
+- REVIEW_STOPPED（终态：PR 已关闭/合并、达最大轮次，agent 已自行清理状态文件）→ CronDelete 取消本任务 + 记录遥测
+- REVIEW_STOPPED（临时失败：gh/git 调用失败，状态文件仍存在）→ **保留任务**，等下一轮重试；不要取消 Cron，否则跟踪会永久丢失
 - REVIEW_SKIPPED → 本轮无变更（便宜路径已执行），保留任务等下一轮
 - REVIEW_FIXED / REVIEW_MANUAL → 保留任务等下一轮验证
 ```

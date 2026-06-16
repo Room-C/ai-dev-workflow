@@ -56,6 +56,8 @@ tools: Read, Write, Edit, Glob, Grep, Bash
 - `REVIEW_SKIPPED` — 本轮无新 commit 且无新 comment/review，跳过（无需完整审查）
 - `REVIEW_DONE` — 所有问题已解决（代码已推送验证 + 所有 manual 项有人类回复），可合并
 - `REVIEW_STOPPED` — PR 已关闭/合并、达最大轮次，或 `gh`/`git` 调用失败无法安全推进
+  - **终态**（PR 已关闭/合并、达最大轮次）：agent 在返回前自行 `rm -f "{state_file}"`，跟踪确定不会再继续。
+  - **临时失败**（`gh`/`git` 调用失败）：**不要**删除状态文件——下一次 scheduler tick 或用户手动重跑应能重试，而不是永久丢失跟踪进度。编排器收到 `REVIEW_STOPPED` 时不应自行删除状态文件，由 agent 按上述区分自行处理。
 
 ---
 
@@ -72,10 +74,12 @@ tools: Read, Write, Edit, Glob, Grep, Bash
 在 Step 1 抓到的全部行内评论 JSON 存入 `ALL_INLINE`（数组），供下列辅助函数使用。**先定义，后调用**：
 
 ```bash
-# 是否已回复过某条 comment（命中标记即跳过）
+# 是否已回复过某条 comment（命中标记即跳过）。
+# 用 test() 而非 contains()：cid 是数字前缀，contains("cid=123") 会误命中
+# "cid=1234"，导致跳过对一条尚未回复的 comment 的回复。用空格或 "-->" 锚定边界。
 already_replied() {
   printf '%s' "$ALL_INLINE" | jq -e --arg cid "$1" \
-    'any(.[]; .body | contains("rc-review:reply cid=" + $cid))' >/dev/null 2>&1
+    'any(.[]; .body | test("rc-review:reply cid=" + $cid + "( |-->)"))' >/dev/null 2>&1
 }
 
 # 幂等回复某条行内 comment。kind 可选（manual 时传 "manual"）
@@ -104,7 +108,7 @@ post_finding() {
   local fp
   fp=$(printf '%s:%s:%s' "$path" "$line" "$rule" \
         | { shasum -a 256 2>/dev/null || sha256sum 2>/dev/null || cksum; } \
-        | cut -c1-12)
+        | awk '{print $1}' | cut -c1-12)
   # 已存在同指纹 → 回显已有 comment id（不重发）
   local existing_id
   existing_id=$(printf '%s' "$ALL_INLINE" | jq -r --arg fp "$fp" \
@@ -149,8 +153,8 @@ upsert_summary() {
 # 入参靠全局 ALL_INLINE（调用前应已是最新 inline 列表）。近似检测，依赖 in_reply_to_id。
 pending_manual() {
   printf '%s' "$ALL_INLINE" | jq '
-    [ .[] | select(.body | test("rc-review:reply cid=[0-9]+ kind=manual"))
-          | (.body | capture("cid=(?<c>[0-9]+) kind=manual").c) ] | unique as $m
+    ( [ .[] | select(.body | test("rc-review:reply cid=[0-9]+ kind=manual"))
+            | (.body | capture("cid=(?<c>[0-9]+) kind=manual").c) ] | unique ) as $m
     | [ .[] | select(.user.type=="User") | select(.body | contains("rc-review:") | not)
             | (.in_reply_to_id // empty | tostring) ] as $human
     | [ $m[] | select(. as $id | ($human | index($id)) | not) ] | length' 2>/dev/null
@@ -206,7 +210,7 @@ HEAD_SHA="$CURR_SHA"
 # CI 从 pending 变 failed（无新 commit/comment）时此值会变，避免被 gate 误跳过。
 CURR_CHECKS=$(echo "$META" | jq -r \
   '[.statusCheckRollup[]? | {n:(.name // .context // ""), c:(.conclusion // .state // "")}] | sort_by(.n) | tostring' \
-  | { shasum -a 256 2>/dev/null || sha256sum 2>/dev/null || cksum; } | cut -c1-16)
+  | { shasum -a 256 2>/dev/null || sha256sum 2>/dev/null || cksum; } | awk '{print $1}' | cut -c1-16)
 
 # 关键：gh pr view --json comments 只返回 issue-level comments（PR 时间线），
 # 不含 inline review comments（代码行内评论）。用户只回 inline 时 CURR_COMMENTS 不变，
@@ -222,6 +226,7 @@ CURR_INLINE=$(gh api "repos/{repo}/pulls/{pr_number}/comments" --jq 'length' 2>&
 ```bash
 if [ "$STATE" != "OPEN" ]; then
   notify "PR 已关闭或合并"
+  rm -f "{state_file}"   # 终态：PR 已关闭/合并，跟踪不会再继续，清理状态文件
   return REVIEW_STOPPED
 fi
 ```
@@ -256,6 +261,7 @@ fi
 ROUND=$((ROUND + 1))
 if [ "$ROUND" -gt "$MAX" ]; then
   notify "已达最大审查轮次"
+  rm -f "{state_file}"   # 终态：轮次耗尽，跟踪不会再继续，清理状态文件
   return REVIEW_STOPPED
 fi
 jq --argjson r "$ROUND" --arg s "$CURR_SHA" --arg ck "$CURR_CHECKS" \
@@ -516,8 +522,10 @@ PENDING_REPLIES+=("$fid	safe_auto	补上空值校验")
    COMMIT_SHA=$(git rev-parse --short HEAD)
 
    # push 到当前分支已配置的 upstream（gh pr checkout 已正确设置，含 fork remote），
-   # 不要写死 origin/<head_branch>
-   git push || { echo "ERROR: push rejected (branch protection / non-fast-forward / auth)"; return REVIEW_MANUAL; }
+   # 不要写死 origin/<head_branch>；但也不能用裸 `git push`——用户本地若配置了
+   # push.default=matching，裸 push 会把远端所有同名分支一起推送，影响 PR 分支之外的分支。
+   # `git push HEAD` 明确只推当前 HEAD 到其已配置的 upstream，不受 push.default 影响。
+   git push HEAD || { echo "ERROR: push rejected (branch protection / non-fast-forward / auth)"; return REVIEW_MANUAL; }
 
    # exit 0 不代表真 push 了（pre-push hook 可能吞掉）。拉远端比对 SHA 才算落地。
    git fetch --quiet || { echo "ERROR: git fetch after push failed"; return REVIEW_MANUAL; }
@@ -536,7 +544,9 @@ PENDING_REPLIES+=("$fid	safe_auto	补上空值校验")
      desc=$(printf '%s' "$rec" | cut -f3-)
      case "$level" in
        safe_auto)  reply_to_comment "$cid" "✅ 已自动修复：${desc}（commit ${COMMIT_SHA}）" ;;
-       gated_auto) reply_to_comment "$cid" "⚠️ 已修复，请确认：${desc}（commit ${COMMIT_SHA}）" ;;
+       # gated_auto 要求人类确认，必须带 kind=manual 标记，否则 pending_manual()/
+       # 守卫 3 无法把它计入"未闭环"，会在没人确认的情况下被误判 DONE。
+       gated_auto) reply_to_comment "$cid" "⚠️ 已修复，请确认：${desc}（commit ${COMMIT_SHA}）" manual ;;
      esac
    done
    ```
@@ -596,8 +606,14 @@ fi
 **守卫 3：所有 agent 发出的 manual 项均有人类后续回复**（基于幂等标记，不再靠 emoji/bot 身份）
 
 ```bash
-# 重新拉最新 inline，确保拿到人类的新回复，再复用共享的 pending_manual()
-ALL_INLINE=$(gh api repos/{repo}/pulls/{pr_number}/comments --paginate 2>/dev/null) || ALL_INLINE='[]'
+# 重新拉最新 inline，确保拿到人类的新回复，再复用共享的 pending_manual()。
+# 注意：拉取失败时**不能**静默退化为空数组——那会让 pending_manual 误判为 0，
+# 从而在仍有未回复 manual 项时错误地放行 DONE。失败就保守地继续循环。
+ALL_INLINE_RAW=$(gh api repos/{repo}/pulls/{pr_number}/comments --paginate 2>&1) || {
+  echo "ERROR: 守卫 3 拉取 inline comments 失败，无法验证 manual 项 — refusing to mark DONE: $ALL_INLINE_RAW"
+  return REVIEW_MANUAL
+}
+ALL_INLINE="$ALL_INLINE_RAW"
 PENDING_MANUAL=$(pending_manual); PENDING_MANUAL=${PENDING_MANUAL:-0}
 if [ "$PENDING_MANUAL" -gt 0 ] 2>/dev/null; then
   echo "ERROR: $PENDING_MANUAL 个 manual 项未收到人类回复 — refusing to mark DONE"
@@ -605,7 +621,7 @@ if [ "$PENDING_MANUAL" -gt 0 ] 2>/dev/null; then
 fi
 ```
 
-> **注：** 守卫 3 是**近似**检测（依赖 GitHub API 的 `in_reply_to_id`）。若无法精确匹配，宁可 MANUAL 继续循环也不要误判 DONE。
+> **注：** 守卫 3 是**近似**检测（依赖 GitHub API 的 `in_reply_to_id`）。若无法精确匹配，或拉取评论本身失败，宁可 MANUAL 继续循环也不要误判 DONE。
 
 **三项全过 → DONE**：`upsert_summary` 追加一句 `✅ 自动审查完成 — 所有问题已修复，可以合并。`，`notify` 通知，返回 `REVIEW_DONE`。
 

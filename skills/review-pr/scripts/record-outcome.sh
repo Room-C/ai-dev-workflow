@@ -49,15 +49,21 @@ TELEMETRY_FILE="$TELEMETRY_DIR/telemetry.jsonl"
 # 生成 ISO 8601 时间戳
 TS=$(date +"%Y-%m-%dT%H:%M:%S%z")
 
-# 构建 JSON（使用 python3 json.dumps 安全转义特殊字符）
-JSON=$(python3 -c "
-import json, sys
-d = {'ts': sys.argv[1], 'skill': sys.argv[2], 'project': sys.argv[3], 'status': sys.argv[4]}
-if sys.argv[5]: d['failure_step'] = sys.argv[5]
-if sys.argv[6]: d['failure_reason'] = sys.argv[6]
-if sys.argv[7]: d['fallback_used'] = sys.argv[7]
-print(json.dumps(d, ensure_ascii=False))
-" "$TS" "$SKILL_NAME" "$PROJECT_NAME" "$STATUS" "$FAILURE_STEP" "$FAILURE_REASON" "$FALLBACK_USED")
+# 构建 JSON（使用 jq 安全转义特殊字符；jq 是本 Skill 的硬依赖，避免依赖 python3）
+# -c 确保单行紧凑输出，否则 jq 默认多行美化会破坏 .jsonl（每行一条记录）格式。
+JSON=$(jq -nc \
+  --arg ts "$TS" \
+  --arg skill "$SKILL_NAME" \
+  --arg project "$PROJECT_NAME" \
+  --arg status "$STATUS" \
+  --arg f_step "$FAILURE_STEP" \
+  --arg f_reason "$FAILURE_REASON" \
+  --arg fallback "$FALLBACK_USED" \
+  '{ts: $ts, skill: $skill, project: $project, status: $status}
+   + (if $f_step != "" then {failure_step: $f_step} else {} end)
+   + (if $f_reason != "" then {failure_reason: $f_reason} else {} end)
+   + (if $fallback != "" then {fallback_used: $fallback} else {} end)'
+)
 
 # 追加到日志
 echo "$JSON" >> "$TELEMETRY_FILE"
