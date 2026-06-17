@@ -34,11 +34,12 @@ metadata:
 | 宿主能力 | 有 | 无 |
 |----------|----|----|
 | 子代理（Agent 工具） | 按 bundled prompt 委派 pr-reviewer | 主上下文按该 reference **inline 执行** |
+| `gh` / GitHub API（`gh api user` 探针） | 完整在线流程：取 PR diff/评论、发 inline、回复、push、闭环跟踪 | **离线本地审查**：`git diff` 出报告，不读写 GitHub、不改代码、不跟踪（返回 `REVIEW_OFFLINE`） |
 | Cron / scheduler | 发现可推进问题时创建跟踪任务 | 写状态文件，提示用户手动重跑 `rc:review-pr <N>` |
 | 桌面通知 | `notify.sh` 调系统通道 | `notify.sh` 退回 stdout echo |
 | macOS | osascript 通知 | 自动走 notify-send / BurntToast / echo |
 
-**唯一硬依赖**：`gh` CLI（已认证）、`git`、`jq`、POSIX shell。其中 `gh` 在 Step 0 显式预检。
+**硬依赖**：`git`、`jq`、POSIX shell。**`gh` CLI 非硬依赖**——Step 0 用 `gh api user` 真实探针判定能否走在线流程；探针失败（未装 / token 失效 / 网络不可达）即降级为离线本地审查（仅出报告，不读写 GitHub、不改代码）。
 
 ## Quality 策略
 
@@ -60,13 +61,23 @@ rc:review-pr https://github.com/owner/repo/pull/42 --quality fast
 ## Step 0: 环境预检
 
 ```bash
-command -v gh >/dev/null 2>&1 || {
-  echo "ERROR: 未检测到 gh CLI。请先安装 GitHub CLI：https://cli.github.com，然后重试。"; exit 1;
-}
-gh auth status >/dev/null 2>&1 || {
-  echo "ERROR: gh 未认证。请运行 gh auth login 完成认证后重试。"; exit 1;
-}
-command -v jq >/dev/null 2>&1 || { echo "ERROR: 需要 jq，请先安装。"; exit 1; }
+# git / jq 是硬依赖（离线本地审查也要用），缺失即退出。
+command -v git >/dev/null 2>&1 || { echo "ERROR: 需要 git，请先安装。"; exit 1; }
+command -v jq  >/dev/null 2>&1 || { echo "ERROR: 需要 jq，请先安装。"; exit 1; }
+
+# gh 不是硬依赖。用「真实 API 探针」判定能否走完整在线流程，而非过于悲观的 gh auth status：
+#   - auth status 检查的是本地存储 token 的状态，会因 token 报红却未必代表 API 不可用；
+#   - 我们真正依赖的是「能不能调 GitHub API」，所以直接探 gh api user。
+# 探针失败（未装 gh / token 失效 / 网络不可达）→ 不退出，置 GH_OFFLINE=1 走离线本地审查降级。
+GH_OFFLINE=0
+if command -v gh >/dev/null 2>&1 && gh api user --jq .login >/dev/null 2>&1; then
+  GH_OFFLINE=0
+else
+  GH_OFFLINE=1
+  echo "WARN: gh 不可用或认证失效 —— 降级为【离线本地审查】：仅基于本地 git diff 出审查报告，"
+  echo "      不读取/回复 PR 评论、不推送修复、不启动跟踪。"
+  echo "      恢复完整闭环：gh auth login（或 gh auth refresh），认证成功后重跑 rc:review-pr。"
+fi
 ```
 
 定位 Skill 目录（传给 agent，并用于 notify/telemetry）：
@@ -81,10 +92,11 @@ done
 
 ## Step 1: 解析参数 + 获取 PR 信息
 
-1. 从 `$ARGUMENTS` 提取 PR 标识与 `--quality <fast|balanced|deep>`。**PR 标识同时支持编号和链接**：
+1. 从 `$ARGUMENTS` 提取 PR 标识、`--quality <fast|balanced|deep>`、`--base <branch>`（仅离线降级时用于指定对比基线）。**PR 标识同时支持编号和链接**：
    ```bash
-   ARG="<第一个非 --quality 参数>"
+   ARG="<第一个非 --quality/--base 参数>"
    FIRST_REVIEW_QUALITY="<--quality 的值，默认 balanced>"
+   BASE_OVERRIDE="<--base 的值，默认空>"   # 仅 GH_OFFLINE=1 时生效
    case "$FIRST_REVIEW_QUALITY" in
      fast|balanced|deep) ;;
      *) echo "ERROR: --quality 仅支持 fast|balanced|deep"; exit 1 ;;
@@ -100,6 +112,35 @@ done
    esac
    ```
    链接形式解析出的 `URL_REPO` 优先作为目标仓库（支持跨仓库链接）。
+
+**离线降级分支（`GH_OFFLINE=1`）**：跳过下面所有 `gh` PR 解析（2–6 全部依赖 gh），改为**纯本地**确定审查对象。处理完即进入 Step 2 的离线委派。
+
+```bash
+if [ "$GH_OFFLINE" = "1" ]; then
+  git rev-parse --git-dir >/dev/null 2>&1 || {
+    echo "ERROR: gh 不可用且当前不在 git 仓库内，离线审查无对象。请在仓库内运行，或恢复 gh 认证后重试。"; exit 1; }
+  HEAD_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+  # base 解析顺序：--base 显式参数 → origin/HEAD 指向 → main/master/develop 首个存在者
+  BASE_BRANCH="$BASE_OVERRIDE"
+  [ -z "$BASE_BRANCH" ] && BASE_BRANCH=$(git symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null \
+    | sed 's@^refs/remotes/origin/@@')
+  if [ -z "$BASE_BRANCH" ]; then
+    for b in main master develop; do
+      git rev-parse --verify --quiet "$b" >/dev/null 2>&1 && BASE_BRANCH="$b" && break
+    done
+  fi
+  [ -n "$BASE_BRANCH" ] || { echo "ERROR: 无法确定 base 分支，请用 --base <branch> 指定。"; exit 1; }
+  git rev-parse --verify --quiet "$BASE_BRANCH" >/dev/null 2>&1 || {
+    echo "ERROR: base 分支 '$BASE_BRANCH' 不可解析（本地无此 ref）。"; exit 1; }
+  [ -n "$(git diff "$BASE_BRANCH"...HEAD)" ] || {
+    echo "ERROR: $BASE_BRANCH...HEAD 无差异，离线审查无对象。"; exit 1; }
+  # pr_number 仅作展示（用户给了就显示，没给标 (offline)）；不计算/不写状态文件、不进 follow_up。
+  echo "INFO: 离线本地审查 — base=$BASE_BRANCH head=$HEAD_BRANCH，进入 Step 2。"
+fi
+```
+
+以下 **2–6 仅在线分支（`GH_OFFLINE=0`）执行**：
+
 2. 未指定 PR 号：`gh pr list --state open --limit 1 --json number`，无 open PR → 输出 "No open PR found." 并结束
 3. 确定 repo：有 `URL_REPO` 用之，否则 `gh repo view --json nameWithOwner -q '.nameWithOwner'`
 4. 拉取 PR 元信息（含 **fork / 可写性**，供 agent 决定能否 push）：
@@ -123,7 +164,9 @@ done
 
 ## Step 2: 选择模式（首轮 or 接续跟踪）
 
-**先看是否存在该 PR 的状态文件**——无 scheduler 的宿主靠用户手动重跑接续，必须能从 state 切到 `follow_up`，否则永远重头 first_review，状态白存：
+**离线降级（`GH_OFFLINE=1`）**：跳过下面的模式选择——离线恒为**一次性** `first_review`，不读/不写状态文件、不进 `follow_up`。直接按下方委派 pr-reviewer，传 `offline: true`、`mode: first_review`、`base_branch`/`head_branch`/`skill_dir`/`quality`，**不传 `state_file`**。
+
+**在线（`GH_OFFLINE=0`）先看是否存在该 PR 的状态文件**——无 scheduler 的宿主靠用户手动重跑接续，必须能从 state 切到 `follow_up`，否则永远重头 first_review，状态白存：
 
 ```bash
 if [ -f "$STATE_FILE" ] && jq -e . "$STATE_FILE" >/dev/null 2>&1; then
@@ -141,7 +184,10 @@ pr_number, repo, head_branch, base_branch, skill_dir
 is_cross_repository, maintainer_can_modify, head_repo
 quality: <first_review_quality|deep>
 state_file: <仅 follow_up 传，指向已存在的 STATE_FILE>
+offline: <true 仅 GH_OFFLINE=1 时传；离线本地审查，agent 跳过所有 gh 读写>
 ```
+
+> 离线分支：`mode: first_review` + `offline: true`，`repo`/`is_cross_repository` 等 gh 相关参数可省略或留空；agent 只用 `base_branch`/`head_branch`/`skill_dir`/`quality`。
 
 - `first_review` 不传 `state_file`。
 - `follow_up`（接续重跑）传 `state_file`，由 agent 走 Step 0 变更门控；若返回 `REVIEW_DONE`，删除状态文件。若返回 `REVIEW_STOPPED`，**编排器不要自行删除**——agent 已经区分了终态（PR 关闭/合并、达最大轮次，agent 内部已清理）和临时失败（`gh`/`git` 调用失败，状态文件需保留以便重试），由 agent 负责。
@@ -152,6 +198,7 @@ state_file: <仅 follow_up 传，指向已存在的 STATE_FILE>
 
 | Agent 返回 | 处理 |
 |-----------|------|
+| `REVIEW_OFFLINE` | （仅 `GH_OFFLINE=1`）agent 已基于本地 diff 完成审查、报告写在返回里。**把报告原文透传给用户** + 打印重新认证指引（`gh auth login` / `gh auth refresh`，认证后重跑 `rc:review-pr` 恢复完整闭环）+ **不创建跟踪任务、不写状态文件、不发任何 PR 评论** + 结束 |
 | `REVIEW_CLEAN` | 幂等更新总结为 `✅ 自动审查通过`（见下 `upsert_summary`）+ `notify` + 删除状态文件（若有）+ **结束**（不创建跟踪任务） |
 | `REVIEW_MANUAL_ONLY` | 幂等更新总结为 `⏸️ 全部为人工决策项，处理完后手动重跑 rc:review-pr` + `notify` + **结束**（轮询无法推进 manual 项） |
 | `REVIEW_DONE` | （follow_up 接续）`notify` + 删除状态文件 + **结束** |
@@ -271,6 +318,7 @@ status 映射：
 |------|--------|---------------|
 | `REVIEW_CLEAN` / `REVIEW_DONE` | `success` | - |
 | `REVIEW_FIXED` / `REVIEW_MANUAL` / `REVIEW_MANUAL_ONLY` | `partial` | - |
+| `REVIEW_OFFLINE`（gh 不可用，离线本地审查） | `partial` | `gh-offline` |
 | 无 scheduler，降级为手动重跑 | `partial` | `manual-rerun` |
 | 无 Agent 工具，inline 执行 | 在上述基础上附 | `native-inline` |
 | `REVIEW_STOPPED`（gh/git 失败、达上限） | `partial`（上限）/ `failed`（调用失败） | - |
@@ -284,4 +332,4 @@ status 映射：
 - **follow_up 固定 deep 质量档位**，修复质量优先；配合 Step 0.4 cheap gating 成本可控
 - **所有对外回复/总结幂等**：带 `rc-review:*` 隐藏标记，重复运行只更新不新增
 - 所有具体审查/修复逻辑在 bundled `pr-reviewer` reference 中，本 Skill 不做审查判断
-- 不依赖 macOS / 子代理 / Cron 任一存在；缺失即降级，绝不失败退出（`gh` 未装/未认证除外，那是硬前置）
+- 不依赖 macOS / 子代理 / Cron / `gh` 任一存在；缺失即降级，绝不失败退出。`gh` 不可用/认证失效 → 降级**离线本地审查**（report-only，返回 `REVIEW_OFFLINE`）；**仅当**连 git 仓库都不在、或 base 不可解析、或 diff 为空时才硬失败（此时离线审查也无对象）。`git` / `jq` 仍是硬依赖

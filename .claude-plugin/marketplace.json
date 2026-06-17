@@ -9,7 +9,7 @@
     {
       "name": "ai-dev-workflow",
       "description": "Generic Agent Skills package: feature pipeline, quality gates, PR review, and Pencil design-to-code. 12 self-contained skills, 10 bundled agents.",
-      "version": "2.4.0",
+      "version": "2.5.0",
       "author": {
         "name": "Room C Studio",
         "url": "https://github.com/Room-C"

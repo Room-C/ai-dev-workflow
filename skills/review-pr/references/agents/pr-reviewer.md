@@ -42,6 +42,7 @@ tools: Read, Write, Edit, Glob, Grep, Bash
 | `is_cross_repository` | 否 | `true` 表示 fork PR（head 与 base 不同仓库） |
 | `maintainer_can_modify` | 否 | `true` 表示允许维护者推送到 fork 的 head 分支 |
 | `head_repo` | 否 | head 分支所在仓库 `owner/name`（fork PR 时与 `repo` 不同） |
+| `offline` | 否 | `true` 时启用**离线本地审查**模式：仅基于本地 `git diff {base_branch}...HEAD` 审查并产出报告，全程**不调用 `gh` / 不写 GitHub / 不改代码 / 不跟踪**。见下「离线降级模式」 |
 
 ## 返回信号
 
@@ -55,6 +56,7 @@ tools: Read, Write, Edit, Glob, Grep, Bash
 - `REVIEW_MANUAL_ONLY` — **首轮专用**。全部问题均为 manual/advisory，agent 无法推进。编排器收到后**不启动跟踪循环**，等用户新 commit 后手动重跑
 - `REVIEW_SKIPPED` — 本轮无新 commit 且无新 comment/review，跳过（无需完整审查）
 - `REVIEW_DONE` — 所有问题已解决（代码已推送验证 + 所有 manual 项有人类回复），可合并
+- `REVIEW_OFFLINE` — **离线降级专用**（`offline=true`）：已基于本地 `git diff` 完成审查，发现汇成报告随本次输出返回；**未对 GitHub 做任何读写、未改代码**。编排器收到后只透传报告、不跟踪
 - `REVIEW_STOPPED` — PR 已关闭/合并、达最大轮次，或 `gh`/`git` 调用失败无法安全推进
   - **终态**（PR 已关闭/合并、达最大轮次）：agent 在返回前自行 `rm -f "{state_file}"`，跟踪确定不会再继续。
   - **临时失败**（`gh`/`git` 调用失败）：**不要**删除状态文件——下一次 scheduler tick 或用户手动重跑应能重试，而不是永久丢失跟踪进度。编排器收到 `REVIEW_STOPPED` 时不应自行删除状态文件，由 agent 按上述区分自行处理。
@@ -184,6 +186,34 @@ notify() {  # 永不失败；无脚本时退回 echo
 ```
 
 > 不要直接调用 `osascript`——它只在 macOS 存在。一律走 `notify`，它在 Linux（notify-send）、Windows（BurntToast）和无头环境（echo）都能工作。
+
+---
+
+## 离线降级模式（仅 `offline=true`）
+
+当编排器传入 `offline: true`（`gh` 不可用 / 认证失效），执行本节后**立即结束**，**不进入下方 Step 0–6**（它们全依赖 `gh`）。本模式只读本地 git，**绝不**调用任何 `gh` 或网络写操作，也不改代码、不 push、不写状态文件。离线为**一次性**审查：GitHub 侧无任何状态会变，没有可供下一轮比对的对象，故无轮次、无跟踪。
+
+1. **取 diff**（与 Step 1 同一套噪音过滤；优先 bundled 脚本若支持本地 range，否则裸 `git diff` + 手动忽略噪音清单）：
+   ```bash
+   DIFF=$(git diff "{base_branch}...HEAD" 2>&1) \
+     || { echo "ERROR: git diff 失败: $DIFF" >&2; echo "SIGNAL: REVIEW_OFFLINE"; }
+   ```
+   手动忽略：`*.lock`、`*-lock.json/yaml`、`*.generated.*`、`*.g.dart`、`*.freezed.dart`、`*/migrations/*`、`*.min.js/css`、`*.pbxproj`、图片/字体/压缩/二进制、`dist|build|vendor|node_modules|Pods` 等产物目录（与 Step 1 一致）。
+
+2. **审查**：复用 **Step 2** 的 Google 九维度逐文件审查逻辑（按需 `Read` 完整文件取上下文）。唯一区别——发现**不发 `post_finding`**（那会打 `gh api`），改为汇集到本地报告。严重度前缀沿用 `🔴 必须修复 / 🟡 建议修复 / 🟢 Nit`。
+
+3. **产出报告**：把发现按 `🔴/🟡/🟢 + file:line + 问题 + 建议` 汇成 Markdown，写本地文件并在返回里**附正文**：
+   ```bash
+   SLUG=$(basename "$(git rev-parse --show-toplevel 2>/dev/null || echo local)")
+   REPORT="${TMPDIR:-/tmp}/.rc-review-offline-${SLUG}.md"
+   # 写 $REPORT，并把正文直接回显到你给编排器的输出里
+   ```
+   报告末尾固定一句：
+   > ⚠️ 离线模式：未读取/未回复 PR 评论，也未推送修复。重新认证（`gh auth login` / `gh auth refresh`）后重跑 `rc:review-pr` 可恢复完整闭环。
+
+4. **跳过** Step 3–6 的全部 GitHub 写操作（reply / `upsert_summary` / push / 完成守卫）。
+
+5. 末行返回 `SIGNAL: REVIEW_OFFLINE`。
 
 ---
 
@@ -640,3 +670,4 @@ fi
 - **改代码前工作区必须干净**（`git status --porcelain` 为空），否则降级 comment-only
 - **fork PR 不可写时降级 comment-only**，不强行 push
 - **"已修复"类回复必须等 push 远端验证成功后再发**，绝不在 commit 前回复
+- **离线模式（`offline=true`）只读本地 `git diff`**，绝不调用任何 `gh` / 网络写操作，不改代码、不 push、不写状态文件；产出报告后返回 `REVIEW_OFFLINE`
