@@ -25,7 +25,7 @@ tools: Read, Write, Edit, Glob, Grep, Bash
 
 你是自动化 PR Code Review Agent。按传入的 `mode` 参数执行对应流程。所有 PR Review Comment 必须使用**简体中文**书写。
 
-本 prompt 不假设任何特定宿主。在 Claude Code、Codex 或其他通过 `npx skills` 安装的 Agent 上都应能运行：你只需要 `gh` CLI、`git`、`jq` 和一个 POSIX shell。**不要依赖宿主提供子代理、Cron、桌面通知或 macOS**——下面所有可选能力都给了 inline / 跨平台降级。
+本 prompt 不假设任何特定宿主。在 Claude Code、Codex 或其他通过 `npx skills` 安装的 Agent 上都应能运行：完整在线流程需要 `gh` CLI、`git`、`jq` 和一个 POSIX shell；离线降级只需要本地 `git` / `jq`。**不要依赖宿主提供子代理、Cron、桌面通知或 macOS**——下面所有可选能力都给了 inline / 跨平台降级。
 
 ## 输入参数
 
@@ -196,7 +196,7 @@ notify() {  # 永不失败；无脚本时退回 echo
 1. **取 diff**（与 Step 1 同一套噪音过滤；优先 bundled 脚本若支持本地 range，否则裸 `git diff` + 手动忽略噪音清单）：
    ```bash
    DIFF=$(git diff "{base_branch}...HEAD" 2>&1) \
-     || { echo "ERROR: git diff 失败: $DIFF" >&2; echo "SIGNAL: REVIEW_OFFLINE"; }
+     || { echo "ERROR: git diff 失败: $DIFF" >&2; echo "SIGNAL: REVIEW_OFFLINE"; return REVIEW_OFFLINE; }
    ```
    手动忽略：`*.lock`、`*-lock.json/yaml`、`*.generated.*`、`*.g.dart`、`*.freezed.dart`、`*/migrations/*`、`*.min.js/css`、`*.pbxproj`、图片/字体/压缩/二进制、`dist|build|vendor|node_modules|Pods` 等产物目录（与 Step 1 一致）。
 

@@ -34,12 +34,12 @@ metadata:
 | 宿主能力 | 有 | 无 |
 |----------|----|----|
 | 子代理（Agent 工具） | 按 bundled prompt 委派 pr-reviewer | 主上下文按该 reference **inline 执行** |
-| `gh` / GitHub API（`gh api user` 探针） | 完整在线流程：取 PR diff/评论、发 inline、回复、push、闭环跟踪 | **离线本地审查**：`git diff` 出报告，不读写 GitHub、不改代码、不跟踪（返回 `REVIEW_OFFLINE`） |
+| `gh` / GitHub API（目标 PR 端点探针） | 完整在线流程：取 PR diff/评论、发 inline、回复、push、闭环跟踪 | **离线本地审查**：`git diff` 出报告，不读写 GitHub、不改代码、不跟踪（返回 `REVIEW_OFFLINE`） |
 | Cron / scheduler | 发现可推进问题时创建跟踪任务 | 写状态文件，提示用户手动重跑 `rc:review-pr <N>` |
 | 桌面通知 | `notify.sh` 调系统通道 | `notify.sh` 退回 stdout echo |
 | macOS | osascript 通知 | 自动走 notify-send / BurntToast / echo |
 
-**硬依赖**：`git`、`jq`、POSIX shell。**`gh` CLI 非硬依赖**——Step 0 用 `gh api user` 真实探针判定能否走在线流程；探针失败（未装 / token 失效 / 网络不可达）即降级为离线本地审查（仅出报告，不读写 GitHub、不改代码）。
+**硬依赖**：`git`、`jq`、POSIX shell。**`gh` CLI 非硬依赖**——Step 0 只探测 `gh` 是否存在；解析出目标 PR 后再用 `repos/$repo/pulls/$PR_NUMBER` 端点判定能否走在线流程。探针失败（未装 / token 失效 / 网络不可达 / 目标 repo 不可读）即降级为离线本地审查（仅出报告，不读写 GitHub、不改代码）。
 
 ## Quality 策略
 
@@ -65,18 +65,15 @@ rc:review-pr https://github.com/owner/repo/pull/42 --quality fast
 command -v git >/dev/null 2>&1 || { echo "ERROR: 需要 git，请先安装。"; exit 1; }
 command -v jq  >/dev/null 2>&1 || { echo "ERROR: 需要 jq，请先安装。"; exit 1; }
 
-# gh 不是硬依赖。用「真实 API 探针」判定能否走完整在线流程，而非过于悲观的 gh auth status：
-#   - auth status 检查的是本地存储 token 的状态，会因 token 报红却未必代表 API 不可用；
-#   - 我们真正依赖的是「能不能调 GitHub API」，所以直接探 gh api user。
-# 探针失败（未装 gh / token 失效 / 网络不可达）→ 不退出，置 GH_OFFLINE=1 走离线本地审查降级。
+# gh 不是硬依赖。这里只探测命令是否存在；不要用 gh auth status 或 gh api user
+# 过早判定离线，因为 GitHub App installation token 可能无法访问 user 端点，
+# 但仍可访问 repo-scoped PR/comment API。目标 PR 端点探针放在 Step 1。
 GH_OFFLINE=0
-if command -v gh >/dev/null 2>&1 && gh api user --jq .login >/dev/null 2>&1; then
-  GH_OFFLINE=0
-else
+if ! command -v gh >/dev/null 2>&1; then
   GH_OFFLINE=1
-  echo "WARN: gh 不可用或认证失效 —— 降级为【离线本地审查】：仅基于本地 git diff 出审查报告，"
+  echo "WARN: 未检测到 gh CLI —— 降级为【离线本地审查】：仅基于本地 git diff 出审查报告，"
   echo "      不读取/回复 PR 评论、不推送修复、不启动跟踪。"
-  echo "      恢复完整闭环：gh auth login（或 gh auth refresh），认证成功后重跑 rc:review-pr。"
+  echo "      恢复完整闭环：安装 gh 并认证后重跑 rc:review-pr。"
 fi
 ```
 
@@ -113,49 +110,59 @@ done
    ```
    链接形式解析出的 `URL_REPO` 优先作为目标仓库（支持跨仓库链接）。
 
-**离线降级分支（`GH_OFFLINE=1`）**：跳过下面所有 `gh` PR 解析（2–6 全部依赖 gh），改为**纯本地**确定审查对象。处理完即进入 Step 2 的离线委派。
+**离线降级分支（`GH_OFFLINE=1`）**：跳过下面所有 `gh` PR 解析（2–7 全部依赖 gh），改为**纯本地**确定审查对象。处理完即进入 Step 2 的离线委派。
 
 ```bash
 if [ "$GH_OFFLINE" = "1" ]; then
   git rev-parse --git-dir >/dev/null 2>&1 || {
     echo "ERROR: gh 不可用且当前不在 git 仓库内，离线审查无对象。请在仓库内运行，或恢复 gh 认证后重试。"; exit 1; }
   HEAD_BRANCH=$(git rev-parse --abbrev-ref HEAD)
-  # base 解析顺序：--base 显式参数 → origin/HEAD 指向 → main/master/develop 首个存在者
+  # base 解析顺序：--base 显式参数 → origin/HEAD 指向 → local/remote 常见分支
   BASE_BRANCH="$BASE_OVERRIDE"
-  [ -z "$BASE_BRANCH" ] && BASE_BRANCH=$(git symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null \
-    | sed 's@^refs/remotes/origin/@@')
+  [ -z "$BASE_BRANCH" ] && BASE_BRANCH=$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null)
   if [ -z "$BASE_BRANCH" ]; then
-    for b in main master develop; do
+    for b in main master develop origin/main origin/master origin/develop; do
       git rev-parse --verify --quiet "$b" >/dev/null 2>&1 && BASE_BRANCH="$b" && break
     done
   fi
   [ -n "$BASE_BRANCH" ] || { echo "ERROR: 无法确定 base 分支，请用 --base <branch> 指定。"; exit 1; }
   git rev-parse --verify --quiet "$BASE_BRANCH" >/dev/null 2>&1 || {
     echo "ERROR: base 分支 '$BASE_BRANCH' 不可解析（本地无此 ref）。"; exit 1; }
-  [ -n "$(git diff "$BASE_BRANCH"...HEAD)" ] || {
-    echo "ERROR: $BASE_BRANCH...HEAD 无差异，离线审查无对象。"; exit 1; }
+  if git diff --quiet "$BASE_BRANCH"...HEAD; then
+    echo "ERROR: $BASE_BRANCH...HEAD 无差异，离线审查无对象。"; exit 1
+  else
+    diff_status=$?
+    [ "$diff_status" -eq 1 ] || { echo "ERROR: 无法计算 $BASE_BRANCH...HEAD diff。"; exit 1; }
+  fi
   # pr_number 仅作展示（用户给了就显示，没给标 (offline)）；不计算/不写状态文件、不进 follow_up。
   echo "INFO: 离线本地审查 — base=$BASE_BRANCH head=$HEAD_BRANCH，进入 Step 2。"
 fi
 ```
 
-以下 **2–6 仅在线分支（`GH_OFFLINE=0`）执行**：
+以下 **2–7 仅在线分支（`GH_OFFLINE=0`）执行**：
 
 2. 未指定 PR 号：`gh pr list --state open --limit 1 --json number`，无 open PR → 输出 "No open PR found." 并结束
 3. 确定 repo：有 `URL_REPO` 用之，否则 `gh repo view --json nameWithOwner -q '.nameWithOwner'`
-4. 拉取 PR 元信息（含 **fork / 可写性**，供 agent 决定能否 push）：
+4. 在禁用在线流程前，用目标 PR REST 端点做 repo-scoped 探针；不要用 `gh api user`，避免 GitHub App installation token 被误判为离线：
    ```bash
-   PR_META=$(gh pr view "$PR_NUMBER" ${URL_REPO:+--repo "$URL_REPO"} \
-     --json number,headRefName,baseRefName,isCrossRepository,maintainerCanModify,headRepositoryOwner,headRepository)
-   # 用 printf 而非 echo：zsh 内置 echo 默认解释 \n/\t 等转义，会破坏 JSON 字符串
-   head_branch=$(printf '%s' "$PR_META" | jq -r '.headRefName')
-   base_branch=$(printf '%s' "$PR_META" | jq -r '.baseRefName')
-   is_cross_repository=$(printf '%s' "$PR_META" | jq -r '.isCrossRepository')
-   maintainer_can_modify=$(printf '%s' "$PR_META" | jq -r '.maintainerCanModify')
-   head_repo=$(printf '%s' "$PR_META" | jq -r '(.headRepositoryOwner.login) + "/" + (.headRepository.name)')
+   PR_API=$(gh api "repos/$repo/pulls/$PR_NUMBER" 2>&1) || {
+     GH_OFFLINE=1
+     echo "WARN: gh 无法读取目标 PR API（$repo#$PR_NUMBER）——降级为【离线本地审查】：$PR_API"
+   }
    ```
-5. 记录：`pr_number`、`head_branch`、`base_branch`、`repo`、`first_review_quality`、`is_cross_repository`、`maintainer_can_modify`、`head_repo`
-6. 计算**跨平台 + 跨 repo 唯一**的状态文件路径（不写死 `/tmp`；文件名含 repo slug，避免 `repoA#42` 与 `repoB#42` 互相污染）：
+   若此处置 `GH_OFFLINE=1`，执行上面的离线降级分支并结束在线 PR 解析。
+5. 从 `PR_API` 拉取 PR 元信息（含 **fork / 可写性**，供 agent 决定能否 push）：
+   ```bash
+   PR_META="$PR_API"
+   # 用 printf 而非 echo：zsh 内置 echo 默认解释 \n/\t 等转义，会破坏 JSON 字符串
+   head_branch=$(printf '%s' "$PR_META" | jq -r '.head.ref')
+   base_branch=$(printf '%s' "$PR_META" | jq -r '.base.ref')
+   is_cross_repository=$(printf '%s' "$PR_META" | jq -r '(.head.repo.full_name != .base.repo.full_name)')
+   maintainer_can_modify=$(printf '%s' "$PR_META" | jq -r '.maintainer_can_modify // false')
+   head_repo=$(printf '%s' "$PR_META" | jq -r '.head.repo.full_name')
+   ```
+6. 记录：`pr_number`、`head_branch`、`base_branch`、`repo`、`first_review_quality`、`is_cross_repository`、`maintainer_can_modify`、`head_repo`
+7. 计算**跨平台 + 跨 repo 唯一**的状态文件路径（不写死 `/tmp`；文件名含 repo slug，避免 `repoA#42` 与 `repoB#42` 互相污染）：
    ```bash
    STATE_DIR="${TMPDIR:-/tmp}"; STATE_DIR="${STATE_DIR%/}"
    REPO_SLUG=$(printf '%s' "$repo" | tr '/' '-' | tr -cs 'A-Za-z0-9._-' '-')
