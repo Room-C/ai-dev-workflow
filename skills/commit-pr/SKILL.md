@@ -26,13 +26,24 @@ model: haiku
 
 严格按步骤执行。
 
+Before Step 0, resolve and refresh the remote base:
+
+1. Set `<remote-target-branch>` to `origin/<target-branch>`.
+2. Fetch the latest remote target branch before any branch diff checks:
+   ```bash
+   git fetch origin +refs/heads/<target-branch>:refs/remotes/origin/<target-branch>
+   git rev-parse --verify <remote-target-branch>
+   ```
+3. If fetch or verification fails, report the error and **STOP**.
+4. Use `<remote-target-branch>` for all `git diff` / merge-base checks. Keep using the plain `<target-branch>` for `gh pr list --base` and `gh pr create --base`.
+
 ### Step 0 — Early Exit Check
 
 Check the context above:
 
 1. **No uncommitted changes AND current branch has no diff vs target branch:**
-   - Run `git diff <target-branch>...HEAD --stat` to check.
-   - If both are empty, report: "No uncommitted changes and no diff vs `<target-branch>`. Nothing to do." then **STOP**.
+   - Run `git diff <remote-target-branch>...HEAD --stat` to check.
+   - If both are empty, report: "No uncommitted changes and no diff vs `<remote-target-branch>`. Nothing to do." then **STOP**.
 
 2. **No uncommitted changes BUT branch has commits not in target:**
    - Skip to Step 3 (push + PR only).

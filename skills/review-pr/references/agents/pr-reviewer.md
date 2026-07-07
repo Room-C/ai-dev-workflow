@@ -554,11 +554,18 @@ PENDING_REPLIES+=("$fid	safe_auto	补上空值校验")
    git commit -m "fix(review): <描述>"
    COMMIT_SHA=$(git rev-parse --short HEAD)
 
-   # push 到当前分支已配置的 upstream（gh pr checkout 已正确设置，含 fork remote），
+   # push 到当前分支已配置的 upstream（gh pr checkout 已正确设置，含 fork remote）。
    # 不要写死 origin/<head_branch>；但也不能用裸 `git push`——用户本地若配置了
    # push.default=matching，裸 push 会把远端所有同名分支一起推送，影响 PR 分支之外的分支。
-   # `git push HEAD` 明确只推当前 HEAD 到其已配置的 upstream，不受 push.default 影响。
-   git push HEAD || { echo "ERROR: push rejected (branch protection / non-fast-forward / auth)"; return REVIEW_MANUAL; }
+   CURR_BRANCH=$(git branch --show-current)
+   REMOTE_NAME=$(git config "branch.${CURR_BRANCH}.remote")
+   REMOTE_MERGE=$(git config "branch.${CURR_BRANCH}.merge")
+   REMOTE_BRANCH="${REMOTE_MERGE#refs/heads/}"
+   if [ -z "$CURR_BRANCH" ] || [ -z "$REMOTE_NAME" ] || [ -z "$REMOTE_BRANCH" ] || [ "$REMOTE_BRANCH" = "$REMOTE_MERGE" ]; then
+     echo "ERROR: current branch upstream is not configured; refusing to push"
+     return REVIEW_MANUAL
+   fi
+   git push "$REMOTE_NAME" "HEAD:$REMOTE_BRANCH" || { echo "ERROR: push rejected (branch protection / non-fast-forward / auth)"; return REVIEW_MANUAL; }
 
    # exit 0 不代表真 push 了（pre-push hook 可能吞掉）。拉远端比对 SHA 才算落地。
    git fetch --quiet || { echo "ERROR: git fetch after push failed"; return REVIEW_MANUAL; }
