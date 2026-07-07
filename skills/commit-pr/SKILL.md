@@ -31,7 +31,7 @@ Before Step 0, resolve and refresh the remote base:
 1. Set `<remote-target-branch>` to `origin/<target-branch>`.
 2. Fetch the latest remote target branch before any branch diff checks:
    ```bash
-   git fetch origin <target-branch>:refs/remotes/origin/<target-branch>
+   git fetch origin +refs/heads/<target-branch>:refs/remotes/origin/<target-branch>
    git rev-parse --verify <remote-target-branch>
    ```
 3. If fetch or verification fails, report the error and **STOP**.
