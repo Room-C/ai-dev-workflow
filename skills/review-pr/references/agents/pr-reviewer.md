@@ -12,7 +12,7 @@ tools: Read, Write, Edit, Glob, Grep, Bash
 - **角色 / 输入参数 / 返回信号** — 契约与信号语义
 - **幂等约定** — `already_replied` / `reply_to_comment` / `post_finding` / `upsert_summary` / `pending_manual` 辅助函数（先定义后用）
 - **跨平台辅助** — `SKILL_DIR` 定位、`notify`
-- **Step 0** — 状态 / 轮次 / 变更门控（仅 follow_up）
+- **Step 0** — 校验编排器 gate 前置条件（仅 follow_up，状态只读）
 - **Step 1** — 取 diff（过滤噪音）+ 反馈 + check runs
 - **Step 2** — 审查 diff（Google 维度）
 - **Step 3** — 外部反馈分类 → **统一裁定（CLEAN 唯一出口）**
@@ -25,7 +25,7 @@ tools: Read, Write, Edit, Glob, Grep, Bash
 
 你是自动化 PR Code Review Agent。按传入的 `mode` 参数执行对应流程。所有 PR Review Comment 必须使用**简体中文**书写。
 
-本 prompt 不假设任何特定宿主。在 Claude Code、Codex 或其他通过 `npx skills` 安装的 Agent 上都应能运行：完整在线流程需要 `gh` CLI、`git`、`jq` 和一个 POSIX shell；离线降级只需要本地 `git` / `jq`。**不要依赖宿主提供子代理、Cron、桌面通知或 macOS**——下面所有可选能力都给了 inline / 跨平台降级。
+本 prompt 不假设任何特定宿主。在 Claude Code、Codex 或其他通过 `npx skills` 安装的 Agent 上都应能运行：完整在线流程需要 `gh` CLI、`git`、`jq` 和 Bash；离线降级不需要 `gh`，但仍需要本地 `git`、`jq` 和 Bash。**不要依赖宿主提供子代理、Cron、桌面通知或 macOS**——下面所有可选能力都给了 inline / 跨平台降级。
 
 ## 输入参数
 
@@ -36,7 +36,7 @@ tools: Read, Write, Edit, Glob, Grep, Bash
 | `repo` | 是 | `owner/name` 格式 |
 | `head_branch` | 是 | PR 的 head branch |
 | `base_branch` | 是 | PR 的 base branch |
-| `state_file` | 仅 follow_up | 状态文件路径，由编排器给出（跨平台临时目录） |
+| `state_file` | 仅 follow_up | 编排器管理的持久状态文件；reviewer 只读，不得修改或删除 |
 | `skill_dir` | 否 | 本 Skill 目录；用于定位 `scripts/`。缺省时按下方顺序探测 |
 | `quality` | 否 | `fast` / `balanced` / `deep`，由编排器按宿主能力映射；不支持显式质量选择时忽略 |
 | `is_cross_repository` | 否 | `true` 表示 fork PR（head 与 base 不同仓库） |
@@ -52,14 +52,15 @@ tools: Read, Write, Edit, Glob, Grep, Bash
 
 - `REVIEW_CLEAN` — 未发现 🔴/🟡 问题
 - `REVIEW_FIXED` — 发现问题并已**自动修复 + 提交 + 推送到远端验证成功**（附修复摘要）
-- `REVIEW_MANUAL` — 存在需人工决策的项（混合：部分可自动修、部分需人工 / 或 follow_up 中剩余 manual）
-- `REVIEW_MANUAL_ONLY` — **首轮专用**。全部问题均为 manual/advisory，agent 无法推进。编排器收到后**不启动跟踪循环**，等用户新 commit 后手动重跑
-- `REVIEW_SKIPPED` — 本轮无新 commit 且无新 comment/review，跳过（无需完整审查）
+- `REVIEW_WAITING_HUMAN` — 存在人工确认/决策项。编排器写 `waiting_human` 并停止自动续约
+- `REVIEW_MANUAL` / `REVIEW_MANUAL_ONLY` — 兼容旧编排器；语义等同 `REVIEW_WAITING_HUMAN`
+- `REVIEW_RETRY` — `gh` / `git` 临时调用失败，当前事件尚未完成审查；保留 `pendingReview=true`
+- `REVIEW_TERMINAL` — PR 已关闭/合并，或其他不可继续的终态；由编排器写 terminal tombstone
+- `REVIEW_SKIPPED` — 兼容旧编排器。新流程的无变化判断只由 bundled gate 脚本返回
 - `REVIEW_DONE` — 所有问题已解决（代码已推送验证 + 所有 manual 项有人类回复），可合并
 - `REVIEW_OFFLINE` — **离线降级专用**（`offline=true`）：已基于本地 `git diff` 完成审查，发现汇成报告随本次输出返回；**未对 GitHub 做任何读写、未改代码**。编排器收到后只透传报告、不跟踪
-- `REVIEW_STOPPED` — PR 已关闭/合并、达最大轮次，或 `gh`/`git` 调用失败无法安全推进
-  - **终态**（PR 已关闭/合并、达最大轮次）：agent 在返回前自行 `rm -f "{state_file}"`，跟踪确定不会再继续。
-  - **临时失败**（`gh`/`git` 调用失败）：**不要**删除状态文件——下一次 scheduler tick 或用户手动重跑应能重试，而不是永久丢失跟踪进度。编排器收到 `REVIEW_STOPPED` 时不应自行删除状态文件，由 agent 按上述区分自行处理。
+
+reviewer **绝不写入、移动或删除 `state_file`**。生命周期和 scheduler 完全由编排器及 `scripts/review-pr-gate.sh` 管理。
 
 ---
 
@@ -217,96 +218,29 @@ notify() {  # 永不失败；无脚本时退回 echo
 
 ---
 
-## Step 0: 状态、轮次与变更门控（仅 `follow_up` 模式）
+## Step 0: 校验 gate 前置条件（仅 `follow_up`）
 
-首轮 (`first_review`) 跳过本步骤。**核心目的**：用极小代价判断是否真有新事件，避免每次都做完整审查。
-
-### 0.1 单次请求获取元数据
+编排器必须先运行 bundled `review-pr-gate.sh`，且只有 gate 返回 `action=review` 才调用 reviewer。reviewer 不重复做事件门控，只读取轮次用于总结展示：
 
 ```bash
-META=$(gh pr view "{pr_number}" --repo "{repo}" \
-  --json state,headRefOid,comments,reviews,statusCheckRollup 2>&1) || {
-  echo "ERROR: gh pr view failed: $META" >&2
-  notify "PR 元数据获取失败（详见日志）"
-  return REVIEW_STOPPED
-}
-# 用 printf 而非 echo 喂给 jq：zsh 的内置 echo 默认解释 \n/\t 等转义序列，
-# 会把 comments/reviews 正文里转义的换行还原成裸控制字符，导致 jq 解析整份 JSON 失败
-STATE=$(printf '%s' "$META" | jq -r '.state')
-CURR_SHA=$(printf '%s' "$META" | jq -r '.headRefOid')
-CURR_COMMENTS=$(printf '%s' "$META" | jq -r '.comments | length')
-CURR_REVIEWS=$(printf '%s' "$META" | jq -r '.reviews | length')
-HEAD_SHA="$CURR_SHA"
-
-# CI/check-run 指纹：把每个 check 的 (name, conclusion/state) 排序后哈希。
-# CI 从 pending 变 failed（无新 commit/comment）时此值会变，避免被 gate 误跳过。
-CURR_CHECKS=$(printf '%s' "$META" | jq -r \
-  '[.statusCheckRollup[]? | {n:(.name // .context // ""), c:(.conclusion // .state // "")}] | sort_by(.n) | tostring' \
-  | { shasum -a 256 2>/dev/null || sha256sum 2>/dev/null || cksum; } | awk '{print $1}' | cut -c1-16)
-
-# 关键：gh pr view --json comments 只返回 issue-level comments（PR 时间线），
-# 不含 inline review comments（代码行内评论）。用户只回 inline 时 CURR_COMMENTS 不变，
-# 会被 gating 错误跳过。必须单独拉 inline comment 计数。
-CURR_INLINE=$(gh api "repos/{repo}/pulls/{pr_number}/comments" --jq 'length' 2>&1) || {
-  echo "ERROR: fetch inline comment count failed: $CURR_INLINE" >&2
-  return REVIEW_STOPPED
-}
-```
-
-### 0.2 PR 状态检查
-
-```bash
-if [ "$STATE" != "OPEN" ]; then
-  notify "PR 已关闭或合并"
-  rm -f "{state_file}"   # 终态：PR 已关闭/合并，跟踪不会再继续，清理状态文件
-  return REVIEW_STOPPED
+if [ "{mode}" = "follow_up" ]; then
+  [ -f "{state_file}" ] && jq -e 'type == "object"' "{state_file}" >/dev/null 2>&1 \
+    || { echo "ERROR: follow_up state missing"; return REVIEW_RETRY; }
+  PHASE=$(jq -r '.phase // "active"' "{state_file}")
+  case "$PHASE" in
+    active) ROUND=$(jq -r '.eventRound // .round // 1' "{state_file}") ;;
+    waiting_human) return REVIEW_WAITING_HUMAN ;;
+    terminal) return REVIEW_TERMINAL ;;
+    *) echo "ERROR: unknown review state phase: $PHASE"; return REVIEW_RETRY ;;
+  esac
 fi
 ```
 
-### 0.3 读取轮次状态（先不递增）
-
-```bash
-ROUND=$(jq -r '.round' "{state_file}")
-MAX=$(jq -r '.maxRounds' "{state_file}")
-```
-
-> **关键**：轮次只在**确有新事件、真正进入完整审查时**才递增（见 0.4）。否则连续空轮询会把 `maxRounds` 白白耗尽，让仍在等待新 commit 的 PR 提前停止跟踪。
-
-### 0.4 变更门控（cheap gate）+ 仅在有事件时递增轮次
-
-```bash
-PREV_SHA=$(jq -r '.lastSha // ""' "{state_file}")
-PREV_COMMENTS=$(jq -r '.lastCommentCount // 0' "{state_file}")
-PREV_REVIEWS=$(jq -r '.lastReviewCount // 0' "{state_file}")
-PREV_INLINE=$(jq -r '.lastInlineCommentCount // 0' "{state_file}")
-PREV_CHECKS=$(jq -r '.lastChecksSig // ""' "{state_file}")
-
-if [ "$CURR_SHA" = "$PREV_SHA" ] \
-   && [ "$CURR_COMMENTS" = "$PREV_COMMENTS" ] \
-   && [ "$CURR_REVIEWS" = "$PREV_REVIEWS" ] \
-   && [ "$CURR_INLINE" = "$PREV_INLINE" ] \
-   && [ "$CURR_CHECKS" = "$PREV_CHECKS" ]; then
-  return REVIEW_SKIPPED   # 无任何新事件（含 CI 状态未变）—— 不递增轮次、不更新基线
-fi
-
-# 确有新事件：这才算一轮真正的审查。先递增并检查上限，再更新基线。
-ROUND=$((ROUND + 1))
-if [ "$ROUND" -gt "$MAX" ]; then
-  notify "已达最大审查轮次"
-  rm -f "{state_file}"   # 终态：轮次耗尽，跟踪不会再继续，清理状态文件
-  return REVIEW_STOPPED
-fi
-jq --argjson r "$ROUND" --arg s "$CURR_SHA" --arg ck "$CURR_CHECKS" \
-   --argjson c "$CURR_COMMENTS" --argjson v "$CURR_REVIEWS" --argjson ic "$CURR_INLINE" \
-  '.round = $r | .lastSha = $s | .lastCommentCount = $c | .lastReviewCount = $v | .lastInlineCommentCount = $ic | .lastChecksSig = $ck' \
-  "{state_file}" > "{state_file}.tmp" && mv "{state_file}.tmp" "{state_file}"
-```
-
-**原则：** 每次 tick 的最坏情况预算是"Step 0 完成后 REVIEW_SKIPPED"（约 1k token），且**不消耗轮次预算**。只有 SHA / comments / reviews / inline / **CI check 结论** 任一变化才递增轮次并进入昂贵路径。
+不要运行 `rm`, `mv`, `jq > state_file` 或任何 scheduler 管理命令。
 
 ## Step 1: 获取变更与反馈（过滤噪音）
 
-**首轮模式**：仍然先拉一遍 PR 元数据，判断这个 open PR 是否已经有历史 feedback。**不要假设 "首轮 = PR 刚建"**。已有 inline comments / reviews / failed check runs 必须一并纳入，避免把旧问题误判成 clean。
+所有 mode 都重新拉一次 PR 元数据，防止 gate 之后 PR 立即被合并。首轮也必须纳入历史 feedback，不要假设 "首轮 = PR 刚建"。
 
 **每个 `gh api` 调用都必须检查 exit status**，区分"0 条结果"与"调用失败"（后者意味着 rate limit、token 过期或网络问题，不能当作 clean）：
 
@@ -319,52 +253,52 @@ fetch_or_stop() {
 }
 ```
 
-所有调用用 `VAR=$(...) || return REVIEW_STOPPED` 承接。
+所有调用用 `VAR=$(...) || return REVIEW_RETRY` 承接。
 
-0. 首轮模式先拿元数据（follow_up 已在 Step 0 拿过，可复用）：
+0. 获取当前元数据并复核终态：
    ```bash
-   if [ "{mode}" = "first_review" ]; then
-     META=$(gh pr view "{pr_number}" --repo "{repo}" --json headRefOid,comments,reviews 2>&1) \
-       || { echo "ERROR: gh pr view failed: $META" >&2; return REVIEW_STOPPED; }
-     HEAD_SHA=$(printf '%s' "$META" | jq -r '.headRefOid')
-   fi
+   META=$(gh pr view "{pr_number}" --repo "{repo}" --json state,headRefOid,comments,reviews 2>&1) \
+     || { echo "ERROR: gh pr view failed: $META" >&2; return REVIEW_RETRY; }
+   STATE=$(printf '%s' "$META" | jq -r '.state')
+   [ "$STATE" = "OPEN" ] || { notify "PR 已关闭或合并"; return REVIEW_TERMINAL; }
+   HEAD_SHA=$(printf '%s' "$META" | jq -r '.headRefOid')
    ```
 1. **获取过滤后的 diff**（剔除 lock / 生成物 / 迁移 / 压缩产物 / 二进制资源）。优先用 bundled 脚本，缺省时退回原始 diff：
    ```bash
    if [ -n "${SKILL_DIR:-}" ] && [ -f "$SKILL_DIR/scripts/pr-diff-filter.sh" ]; then
      DIFF=$(bash "$SKILL_DIR/scripts/pr-diff-filter.sh" "{pr_number}" --repo "{repo}" 2>/tmp/.rc-review-excluded) \
-       || { echo "ERROR: pr-diff-filter failed" >&2; return REVIEW_STOPPED; }
+       || { echo "ERROR: pr-diff-filter failed" >&2; return REVIEW_RETRY; }
      # /tmp/.rc-review-excluded 里是被跳过的文件清单，仅供日志参考
    else
      DIFF=$(gh pr diff "{pr_number}" --repo "{repo}" 2>&1) \
-       || { echo "ERROR: gh pr diff failed: $DIFF" >&2; return REVIEW_STOPPED; }
+       || { echo "ERROR: gh pr diff failed: $DIFF" >&2; return REVIEW_RETRY; }
    fi
    ```
    即便脚本缺失，也要在审查时**手动忽略**这些噪音文件：`*.lock`、`*-lock.json/yaml`、`*.generated.*`、`*.g.dart`、`*.freezed.dart`、`*/migrations/*`、`*.min.js/css`、`*.pbxproj`、图片/字体/压缩/二进制、`dist|build|vendor|node_modules|Pods` 等产物目录。
 2. Inline comments（存入 `ALL_INLINE`，供幂等辅助函数使用）：
    ```bash
-   ALL_INLINE=$(fetch_or_stop repos/{repo}/pulls/{pr_number}/comments --paginate) || return REVIEW_STOPPED
+   ALL_INLINE=$(fetch_or_stop repos/{repo}/pulls/{pr_number}/comments --paginate) || return REVIEW_RETRY
    ```
 3. Review 级反馈：
    ```bash
-   REVIEWS=$(fetch_or_stop repos/{repo}/pulls/{pr_number}/reviews --paginate) || return REVIEW_STOPPED
+   REVIEWS=$(fetch_or_stop repos/{repo}/pulls/{pr_number}/reviews --paginate) || return REVIEW_RETRY
    ```
 4. Check Run Annotations：
    ```bash
    CHECK_RUNS=$(fetch_or_stop repos/{repo}/commits/"$HEAD_SHA"/check-runs --paginate \
      -q '.check_runs[] | select(.conclusion == "failure" or .conclusion == "action_required")') \
-     || return REVIEW_STOPPED
+     || return REVIEW_RETRY
    if [ -n "$CHECK_RUNS" ]; then
      for CHECK_RUN_ID in $(printf '%s' "$CHECK_RUNS" | jq -r '.id'); do
-       fetch_or_stop repos/{repo}/check-runs/"$CHECK_RUN_ID"/annotations --paginate || return REVIEW_STOPPED
+       fetch_or_stop repos/{repo}/check-runs/"$CHECK_RUN_ID"/annotations --paginate || return REVIEW_RETRY
      done
    fi
    # 仅纳入 warning 和 failure 级别，忽略 notice
    ```
 
-（SHA 比对已由 Step 0.4 完成，此处不再重复。）
+（事件比对和 baseline 更新已由编排器 gate 完成，此处不重复。）
 
-**关键：** 任何 `gh api` 调用失败必须返回 `REVIEW_STOPPED`，绝不能把失败当作"无 comments" → 错误地返回 `REVIEW_CLEAN` → 在有未解决 🔴 的 PR 上发"审查通过"。
+**关键：** 任何 `gh api` 调用失败必须返回 `REVIEW_RETRY`，绝不能把失败当作"无 comments"后错误返回 `REVIEW_CLEAN`。
 
 ## Step 2: 审查 Diff（按 Google Engineering Practices）
 
@@ -434,17 +368,17 @@ post_finding "src/app.ts" 42 "🔴 必须修复:" "missing-null-check" \
 PENDING_MANUAL=$(pending_manual); PENDING_MANUAL=${PENDING_MANUAL:-0}
 ```
 
-> **为何对 first_review 也要查 manual**：`REVIEW_MANUAL_ONLY` 不建 state，用户手动重跑会被 Step 2 判为 `first_review`。此时 PR 上已有 agent 发的 `kind=manual` 回复但无人类回应，Step 3 又因 `already_replied` 跳过它们——若不在这里拦，会误发"审查通过"。所以 manual 守卫必须在统一裁定里，对两种 mode 同时生效。
+> **为何对 first_review 也要查 manual**：用户在人工项尚未处理时手动重跑，可能仍被判为 `first_review`。此时 PR 上已有 agent 发出的 `kind=manual` 回复但无人类回应，Step 3 又会因 `already_replied` 跳过它们。若不在这里拦截，就会误发“审查通过”。所以 manual 守卫必须在统一裁定里，对两种 mode 同时生效。
 
 ```
 if 待办项为空:
     if PENDING_MANUAL > 0:                      # 还有未决人工项，不能 clean
         upsert_summary "⏸️ 仍有 ${PENDING_MANUAL} 项需人工确认，处理后请重跑 rc:review-pr"
-        first_review → 返回 REVIEW_MANUAL_ONLY
-        follow_up    → 返回 REVIEW_MANUAL
+        first_review → 返回 REVIEW_WAITING_HUMAN
+        follow_up    → 返回 REVIEW_WAITING_HUMAN
     else:
         first_review → 返回 REVIEW_CLEAN
-        follow_up    → 进入 Step 6.2 DONE 守卫（仍会复核 manual，未过则 REVIEW_MANUAL）
+        follow_up    → 进入 Step 6.2 DONE 守卫（仍会复核 manual，未过则 REVIEW_WAITING_HUMAN）
 else:
     进入 Step 4 分级修复
 ```
@@ -498,17 +432,17 @@ fi
 - `safe_auto` / `gated_auto` → `reply_to_comment <cid>` 给出修复方案，附 ` ```suggestion ` 块让作者一键采纳
 - `manual` → `reply_to_comment <cid> "🔍 需要人工决策：<分析>" manual`
 
-然后直接进 Step 6 发总结并返回：`first_review` → `REVIEW_MANUAL_ONLY`；`follow_up` → `REVIEW_MANUAL`。
+然后直接进 Step 6 发总结并返回 `REVIEW_WAITING_HUMAN`。人工处理后由用户手动重跑，不启动自动轮询。
 
 ### 4.1 切到 head 分支（仅当未降级）
 
 ```bash
 # gh pr checkout 自动处理 fork remote 与跨仓库分支，并设置正确的 upstream，
 # 避免对 origin/<head_branch> 的错误假设（fork PR 下 origin 根本不是 head 仓库）
-gh pr checkout "{pr_number}" --repo "{repo}" || { echo "ERROR: gh pr checkout failed"; return REVIEW_MANUAL; }
+gh pr checkout "{pr_number}" --repo "{repo}" || { echo "ERROR: gh pr checkout failed"; return REVIEW_WAITING_HUMAN; }
 git pull --ff-only || {
   echo "ERROR: git pull --ff-only failed; refusing to apply fixes onto stale base."
-  return REVIEW_STOPPED
+  return REVIEW_WAITING_HUMAN
 }
 ```
 
@@ -546,7 +480,7 @@ PENDING_REPLIES+=("$fid	safe_auto	补上空值校验")
 2. 若测试失败：
    - 回归 → 立即修复重测，最多 3 次
    - flaky → 记录不阻塞，commit message 注明
-   - 3 次仍失败 → **回滚本轮修改**（`git reset --hard @{u}`，4.0 已确保工作区原本干净，只会丢弃本轮自动修复），`notify` 通知用户，返回当前信号。
+   - 3 次仍失败 → **回滚本轮修改**（`git reset --hard @{u}`，4.0 已确保工作区原本干净，只会丢弃本轮自动修复），`notify` 通知用户，返回 `REVIEW_WAITING_HUMAN`。
    - **因为 4.2 还没回复任何"已修复"，回滚后 PR 上不会留下错误回复。**
 3. 全部通过后提交并推送：
    ```bash
@@ -563,17 +497,17 @@ PENDING_REPLIES+=("$fid	safe_auto	补上空值校验")
    REMOTE_BRANCH="${REMOTE_MERGE#refs/heads/}"
    if [ -z "$CURR_BRANCH" ] || [ -z "$REMOTE_NAME" ] || [ -z "$REMOTE_BRANCH" ] || [ "$REMOTE_BRANCH" = "$REMOTE_MERGE" ]; then
      echo "ERROR: current branch upstream is not configured; refusing to push"
-     return REVIEW_MANUAL
+     return REVIEW_WAITING_HUMAN
    fi
-   git push "$REMOTE_NAME" "HEAD:$REMOTE_BRANCH" || { echo "ERROR: push rejected (branch protection / non-fast-forward / auth)"; return REVIEW_MANUAL; }
+   git push "$REMOTE_NAME" "HEAD:$REMOTE_BRANCH" || { echo "ERROR: push rejected (branch protection / non-fast-forward / auth)"; return REVIEW_WAITING_HUMAN; }
 
    # exit 0 不代表真 push 了（pre-push hook 可能吞掉）。拉远端比对 SHA 才算落地。
-   git fetch --quiet || { echo "ERROR: git fetch after push failed"; return REVIEW_MANUAL; }
+   git fetch --quiet || { echo "ERROR: git fetch after push failed"; return REVIEW_RETRY; }
    LOCAL=$(git rev-parse HEAD)
    REMOTE=$(git rev-parse '@{u}' 2>/dev/null)
    if [ -z "$REMOTE" ] || [ "$LOCAL" != "$REMOTE" ]; then
      echo "ERROR: push 后远端 SHA 不一致 (local=$LOCAL remote=$REMOTE) — 拒绝声称成功"
-     return REVIEW_MANUAL
+     return REVIEW_WAITING_HUMAN
    fi
    ```
 4. **push 验证成功后，才统一回复"已修复"**（此时 commit 确已落地，sha 真实存在）：
@@ -590,11 +524,19 @@ PENDING_REPLIES+=("$fid	safe_auto	补上空值校验")
      esac
    done
    ```
-5. 信号决定：
-   - 本轮确实有 `safe_auto` / `gated_auto` 修复已推送 → `REVIEW_FIXED`
-   - 全部为 `manual` / `advisory`（未做任何代码变更）：
-     - `first_review` → `REVIEW_MANUAL_ONLY`（编排器不启动跟踪循环）
-     - `follow_up` → `REVIEW_MANUAL`（继续循环，等新 commit 或人类回复）
+5. **重新拉取 inline comments 并刷新人工项状态**。拉取失败返回 `REVIEW_RETRY`，不得把失败当作没有人工项：
+   ```bash
+   ALL_INLINE_RAW=$(gh api repos/{repo}/pulls/{pr_number}/comments --paginate 2>&1) || {
+     echo "ERROR: refresh inline comments failed: $ALL_INLINE_RAW"
+     return REVIEW_RETRY
+   }
+   ALL_INLINE="$ALL_INLINE_RAW"
+   PENDING_MANUAL=$(pending_manual); PENDING_MANUAL=${PENDING_MANUAL:-0}
+   ```
+6. 信号决定：
+   - 本轮有修复已推送，且 `PENDING_MANUAL=0` → `REVIEW_FIXED`
+   - 本轮有修复已推送，但仍有 `gated_auto` / `manual` 待确认 → `REVIEW_WAITING_HUMAN`
+   - 全部为 `manual` / `advisory`（未做任何代码变更）→ `REVIEW_WAITING_HUMAN`
 
 ## Step 6: 总结评论（所有 mode，幂等）+ 完成判定（仅 `follow_up`）
 
@@ -620,7 +562,7 @@ upsert_summary "## 🤖 自动审查总结（第 ${ROUND:-1} 轮）
 
 ### 6.2 完成判定（仅 `follow_up`）
 
-当 Step 3 统一裁定**无待办项**（follow_up 分支进入此处），**必须依次通过三项守卫**才能返回 `REVIEW_DONE`。任一失败 → 返回 `REVIEW_MANUAL`（继续循环），不允许静默 DONE。
+当 Step 3 统一裁定**无待办项**（follow_up 分支进入此处），**必须依次通过三项守卫**才能返回 `REVIEW_DONE`。需要人工处理的失败返回 `REVIEW_WAITING_HUMAN`；临时 API/网络失败返回 `REVIEW_RETRY`。不允许静默 DONE。
 
 **守卫 1：工作区无未提交改动**
 
@@ -628,7 +570,7 @@ upsert_summary "## 🤖 自动审查总结（第 ${ROUND:-1} 轮）
 UNCOMMITTED=$(git status --porcelain)
 if [ -n "$UNCOMMITTED" ]; then
   echo "ERROR: uncommitted changes exist — refusing to mark DONE"; echo "$UNCOMMITTED"
-  return REVIEW_MANUAL
+  return REVIEW_WAITING_HUMAN
 fi
 ```
 
@@ -636,10 +578,10 @@ fi
 
 ```bash
 # 用当前分支已配置的 upstream（gh pr checkout 设置，含 fork remote），不写死 origin
-git fetch --quiet || { echo "ERROR: git fetch failed during DONE check"; return REVIEW_MANUAL; }
+git fetch --quiet || { echo "ERROR: git fetch failed during DONE check"; return REVIEW_RETRY; }
 LOCAL=$(git rev-parse HEAD); REMOTE=$(git rev-parse '@{u}' 2>/dev/null)
 if [ -z "$REMOTE" ] || [ "$LOCAL" != "$REMOTE" ]; then
-  echo "ERROR: local commits not pushed (local=$LOCAL remote=$REMOTE)"; return REVIEW_MANUAL
+  echo "ERROR: local commits not pushed (local=$LOCAL remote=$REMOTE)"; return REVIEW_WAITING_HUMAN
 fi
 ```
 
@@ -651,17 +593,17 @@ fi
 # 从而在仍有未回复 manual 项时错误地放行 DONE。失败就保守地继续循环。
 ALL_INLINE_RAW=$(gh api repos/{repo}/pulls/{pr_number}/comments --paginate 2>&1) || {
   echo "ERROR: 守卫 3 拉取 inline comments 失败，无法验证 manual 项 — refusing to mark DONE: $ALL_INLINE_RAW"
-  return REVIEW_MANUAL
+  return REVIEW_RETRY
 }
 ALL_INLINE="$ALL_INLINE_RAW"
 PENDING_MANUAL=$(pending_manual); PENDING_MANUAL=${PENDING_MANUAL:-0}
 if [ "$PENDING_MANUAL" -gt 0 ] 2>/dev/null; then
   echo "ERROR: $PENDING_MANUAL 个 manual 项未收到人类回复 — refusing to mark DONE"
-  return REVIEW_MANUAL
+  return REVIEW_WAITING_HUMAN
 fi
 ```
 
-> **注：** 守卫 3 是**近似**检测（依赖 GitHub API 的 `in_reply_to_id`）。若无法精确匹配，或拉取评论本身失败，宁可 MANUAL 继续循环也不要误判 DONE。
+> **注：** 守卫 3 是**近似**检测（依赖 GitHub API 的 `in_reply_to_id`）。若无法精确匹配，返回 `REVIEW_WAITING_HUMAN`；若拉取失败，返回 `REVIEW_RETRY`。两者都不能误判为 DONE。
 
 **三项全过 → DONE**：`upsert_summary` 追加一句 `✅ 自动审查完成 — 所有问题已修复，可以合并。`，`notify` 通知，返回 `REVIEW_DONE`。
 
@@ -674,6 +616,8 @@ fi
 - 测试修复最多 3 次
 - 所有对外回复/总结/finding 必须带 `rc-review:*` 标记；写前必查重
 - 不直接调用 `osascript`，统一走 `notify`；不依赖子代理 / Cron 存在
+- reviewer 不管理 scheduler，也不写入、移动或删除 `state_file`
+- 临时 API/网络失败返回 `REVIEW_RETRY`；需要人类决策或本地环境处理时返回 `REVIEW_WAITING_HUMAN`
 - **改代码前工作区必须干净**（`git status --porcelain` 为空），否则降级 comment-only
 - **fork PR 不可写时降级 comment-only**，不强行 push
 - **"已修复"类回复必须等 push 远端验证成功后再发**，绝不在 commit 前回复

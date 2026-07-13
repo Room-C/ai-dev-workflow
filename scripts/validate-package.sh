@@ -13,6 +13,9 @@ trap cleanup EXIT
 cd "$ROOT"
 mkdir -p "$LOG_DIR"
 
+echo "== review-pr lifecycle tests"
+bash skills/review-pr/scripts/test-review-pr-gate.sh
+
 echo "== skills discovery"
 LIST_OUTPUT="$(npx --yes skills add "$ROOT" --list)"
 printf '%s\n' "$LIST_OUTPUT"
@@ -39,6 +42,9 @@ find "$TMP_HOME" -path "*/rc-review-pr/references/agents/pr-reviewer.md" -print 
 find "$TMP_HOME" -path "*/rc-review-pr/scripts/pr-diff-filter.sh" -print -quit | grep -q .
 find "$TMP_HOME" -path "*/rc-review-pr/scripts/notify.sh" -print -quit | grep -q .
 find "$TMP_HOME" -path "*/rc-review-pr/scripts/record-outcome.sh" -print -quit | grep -q .
+REVIEW_INSTALL_ROOT="$(dirname "$(find "$TMP_HOME" -path "*/rc-review-pr/SKILL.md" -print -quit)")"
+test -x "$REVIEW_INSTALL_ROOT/scripts/review-pr-gate.sh"
+test -x "$REVIEW_INSTALL_ROOT/scripts/test-review-pr-gate.sh"
 
 echo "== copy install: codex / branch-create"
 HOME="$TMP_HOME" npx --yes skills add "$ROOT" -g -a codex --skill rc-branch-create --copy -y >"$LOG_DIR/install-branch-create.log"
@@ -53,6 +59,13 @@ test "$INSTALLED_COUNT" = "13"
 echo "== portability grep"
 if grep -rE '\.claude/plugins/cache|codex-companion|disable-model-invocation' skills/*/SKILL.md skills/*/references skills/*/scripts agents; then
   echo "ERROR: hard-coded legacy host dependency found in runtime docs." >&2
+  exit 1
+fi
+
+if grep -E 'REVIEW_STOPPED|CronCreate|CronDelete|rm -f.*state_file' \
+  skills/review-pr/SKILL.md skills/review-pr/references/agents/pr-reviewer.md \
+  agents/workflow/pr-reviewer.md; then
+  echo "ERROR: unsafe review-pr lifecycle contract found." >&2
   exit 1
 fi
 
