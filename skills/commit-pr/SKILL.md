@@ -115,29 +115,29 @@ gh pr list --head <current-branch> --base <target-branch> --state open --json nu
 ```
 
 - If a PR already exists and `isDraft` is false, report: "PR already open: <URL>，已 push 到该 PR。" then **STOP**.
-- If a PR already exists but `isDraft` is true（多为其他工具创建的草稿），run `gh pr ready <number>` 转为 Ready for review，report: "PR already open: <URL>，已 push 并从 Draft 转为 Ready。" then **STOP**. 仅当用户明确要求保持草稿时跳过转正。
+- If a PR already exists but `isDraft` is true（多为其他工具创建的草稿），run `gh pr ready <number>` 转为 Ready for review 并**检查退出码**：成功则 report "PR already open: <URL>，已 push 并从 Draft 转为 Ready。"；失败则如实 report "PR already open: <URL>，已 push，但 Draft 转正失败，请手动标记 Ready for review。" then **STOP**. 仅当用户明确要求保持草稿时跳过转正。
 - Otherwise, create a pull request:
 
 ```bash
-gh pr create --base <target-branch> --title "<PR title>" --body "$(cat <<'EOF'
+PR_URL=$(gh pr create --base <target-branch> --title "<PR title>" --body "$(cat <<'EOF'
 ## Summary
 <1-3 bullet points describing the changes>
 
 ## Changes
 <list of key files changed and why>
 EOF
-)"
+)")
 ```
 
 - PR title: reuse or expand the commit summary (under 72 chars).
 - **禁止使用 `--draft`**：本 skill 必须产出 Ready for review 的正式 PR，除非用户明确要求草稿。
 
-Then verify the new PR is not a draft（防御性校验，部分宿主/插件默认建草稿）：
+Then verify the new PR is not a draft（防御性校验，部分宿主/插件默认建草稿）。**若用户明确要求草稿 PR，跳过本校验以保持草稿状态**。用上一步捕获的 `$PR_URL` 显式定位 PR，避免多 remote / 同分支多 PR 场景命中错误对象：
 
 ```bash
-IS_DRAFT=$(gh pr view --json isDraft --jq '.isDraft')
+IS_DRAFT=$(gh pr view "$PR_URL" --json isDraft --jq '.isDraft')
 if [ "$IS_DRAFT" = "true" ]; then
-  gh pr ready
+  gh pr ready "$PR_URL"
 fi
 ```
 
