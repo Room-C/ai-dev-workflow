@@ -13,7 +13,9 @@ gh() {
   fi
   case "${1:-} ${2:-}" in
     "pr view") printf '%s\n' "${FAKE_META:?}" ;;
-    "api repos/test/repo/pulls/7/comments?per_page=100") printf '%s\n' "${FAKE_INLINE:-0}" ;;
+    "api repos/test/repo/pulls/7/comments?per_page=100")
+      jq -nc --argjson count "${FAKE_INLINE:-0}" \
+        '[range(0; $count) | {id: ., body: "human reply"}]' ;;
     *) echo "unexpected gh call: $*" >&2; return 2 ;;
   esac
 }
@@ -47,6 +49,17 @@ OUT=$(RC_REVIEW_NOW=1000 FAKE_META="$META_OPEN" FAKE_INLINE=0 "$GATE" --init \
   --repo test/repo --pr 7 --state "$STATE" --ttl-seconds 3600)
 assert_eq initialized "$(printf '%s' "$OUT" | jq -r .action)" "init action"
 assert_eq 4600 "$(jq -r .expiresAt "$STATE")" "init expiry"
+assert_eq array "$(jq -r '.lastChecksSig | type' "$STATE")" "init checks signature type"
+OUT=$(RC_REVIEW_NOW=1100 FAKE_META="$META_OPEN" FAKE_INLINE=0 "$GATE" \
+  --repo test/repo --pr 7 --state "$STATE")
+assert_eq skip "$(printf '%s' "$OUT" | jq -r .action)" "first unchanged wake after init"
+
+STATE="$TMP_ROOT/legacy-checks.json"
+new_state "$STATE"
+jq '.lastChecksSig = "[]"' "$STATE" > "${STATE}.tmp" && mv "${STATE}.tmp" "$STATE"
+OUT=$(RC_REVIEW_NOW=1100 FAKE_META="$META_OPEN" FAKE_INLINE=0 "$GATE" \
+  --repo test/repo --pr 7 --state "$STATE")
+assert_eq skip "$(printf '%s' "$OUT" | jq -r .action)" "legacy string checks signature"
 
 STATE="$TMP_ROOT/unchanged.json"
 new_state "$STATE"

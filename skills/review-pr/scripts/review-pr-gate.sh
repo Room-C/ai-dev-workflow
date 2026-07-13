@@ -172,9 +172,9 @@ checks_signature() {
 fetch_snapshot() {
   META=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
     --json state,headRefOid,comments,reviews,statusCheckRollup 2>&1) || return 1
-  INLINE_COUNT=$(gh api "repos/$REPO/pulls/$PR_NUMBER/comments?per_page=100" \
-    --paginate --slurp --jq \
-    '[.[][] | select(((.body // "") | contains("<!-- rc-review:")) == false)] | length' 2>&1) || return 1
+  INLINE_RAW=$(gh api "repos/$REPO/pulls/$PR_NUMBER/comments?per_page=100" --paginate 2>&1) || return 1
+  INLINE_COUNT=$(printf '%s\n' "$INLINE_RAW" | jq -s -r \
+    '[.[][] | select(((.body // "") | contains("<!-- rc-review:")) == false)] | length') || return 1
   printf '%s' "$INLINE_COUNT" | jq -e 'tonumber >= 0' >/dev/null 2>&1 || return 1
   PR_STATE=$(printf '%s' "$META" | jq -r '.state')
   CURR_SHA=$(printf '%s' "$META" | jq -r '.headRefOid')
@@ -199,7 +199,7 @@ if [ "$MODE" = "init" ]; then
     TERMINAL_AT="$NOW"
   fi
   jq -nc --arg repo "$REPO" --argjson pr "$PR_NUMBER" --arg phase "$PHASE" \
-    --arg reason "$REASON" --arg sha "$CURR_SHA" --arg checks "$CURR_CHECKS" \
+    --arg reason "$REASON" --arg sha "$CURR_SHA" --argjson checks "$CURR_CHECKS" \
     --argjson created "$NOW" --argjson expires "$EXPIRES_AT" --argjson terminalAt "$TERMINAL_AT" \
     --argjson maxTicks "$MAX_TICKS" --argjson maxEvents "$MAX_EVENT_ROUNDS" \
     --argjson maxNoChange "$MAX_NO_CHANGE_TICKS" --argjson maxRetries "$MAX_RETRIES" \
@@ -330,14 +330,17 @@ PREV_SHA=$(jq -r '.lastSha // ""' "$STATE_FILE")
 PREV_COMMENTS=$(jq -r '.lastCommentCount // 0' "$STATE_FILE")
 PREV_REVIEWS=$(jq -r '.lastReviewCount // 0' "$STATE_FILE")
 PREV_INLINE=$(jq -r '.lastInlineCommentCount // 0' "$STATE_FILE")
-PREV_CHECKS=$(jq -c '.lastChecksSig // ""' "$STATE_FILE")
+PREV_CHECKS=$(jq -c '
+  (.lastChecksSig // []) as $checks
+  | if ($checks | type) == "string" then ($checks | fromjson? // []) else $checks end
+' "$STATE_FILE")
 PENDING_REVIEW=$(jq -r '.pendingReview // false' "$STATE_FILE")
 
 if [ "$CURR_SHA" = "$PREV_SHA" ] \
   && [ "$CURR_COMMENTS" = "$PREV_COMMENTS" ] \
   && [ "$CURR_REVIEWS" = "$PREV_REVIEWS" ] \
   && [ "$INLINE_COUNT" = "$PREV_INLINE" ] \
-  && [ "$(printf '%s' "$CURR_CHECKS" | jq -c .)" = "$PREV_CHECKS" ]; then
+  && [ "$CURR_CHECKS" = "$PREV_CHECKS" ]; then
   if [ "$PENDING_REVIEW" = "true" ]; then
     REVIEW_LEASE_UNTIL=$(jq -r '.reviewLeaseUntil // 0' "$STATE_FILE")
     if [ "$REVIEW_LEASE_UNTIL" -gt "$NOW" ]; then

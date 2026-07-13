@@ -134,7 +134,9 @@ fi
    }
    ```
 
-4. 在线时从 `PR_API` 提取：
+4. **控制流硬边界**：若上一步得到 `GH_OFFLINE=1`，立即执行本节前面的“离线分支”，以 `offline:true` 调用 reviewer，透传 `REVIEW_OFFLINE` 后结束当前 Skill。不得解析 `PR_API`，也不得继续下面的在线步骤。
+
+5. 仅当 `GH_OFFLINE=0` 时从 `PR_API` 提取：
 
    ```bash
    PR_STATE=$(printf '%s' "$PR_API" | jq -r '.state')
@@ -145,7 +147,7 @@ fi
    head_repo=$(printf '%s' "$PR_API" | jq -r '.head.repo.full_name')
    ```
 
-5. 使用持久状态目录。只有无法创建持久目录时才退回临时目录，并强制 `FOLLOW=0`：
+6. 使用持久状态目录。只有无法创建持久目录时才退回临时目录，并强制 `FOLLOW=0`：
 
    ```bash
    STATE_DURABLE=1
@@ -162,7 +164,7 @@ fi
    STATE_FILE="$STATE_ROOT/${REPO_SLUG}-${PR_NUMBER}.json"
    ```
 
-6. `PR_STATE != open` 时立即终止。若状态文件存在，用 gate 写 tombstone；不要进入 reviewer，也不要创建/删除 scheduler：
+7. `PR_STATE != open` 时立即终止。若状态文件存在，用 gate 写 tombstone；不要进入 reviewer，也不要创建/删除 scheduler：
 
    ```bash
    if [ "$PR_STATE" != "open" ]; then
