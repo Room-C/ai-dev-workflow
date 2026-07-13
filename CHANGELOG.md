@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.6.0 — 2026-07-13
+
+### Changed
+- **rc:review-pr**: 默认改为单次审查；只有显式 `--follow` 才允许跟踪，并且只能使用可去重的单次唤醒，不再创建 recurring Cron 或从运行中的任务删除自身。
+- **rc:review-pr**: reviewer 改为只读状态，拆分 `REVIEW_WAITING_HUMAN`、`REVIEW_RETRY`、`REVIEW_TERMINAL`，避免人工等待和临时故障继续触发无效会话。
+
+### Added
+- **rc:review-pr lifecycle gate**: 新增自包含状态机脚本与测试，覆盖 PR 合并/关闭、TTL、tick、无变化、事件轮次、API/reviewer 重试、并发锁、reviewer lease、agent 评论过滤和 terminal tombstone。
+
 ## 2.3.0 — 2026-05-21
 
 ### Changed

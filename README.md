@@ -107,7 +107,7 @@ Codex 或其他 Skills 宿主：
 | `rc:diff-review` | 对比目标分支审查、裁决、修复、复审 |
 | `rc:commit` | 提交所有变更并推送当前分支 |
 | `rc:commit-pr` | 提交、推送并创建或复用 PR |
-| `rc:review-pr` | 首轮 PR 审查；有 scheduler 时可跟踪闭环 |
+| `rc:review-pr` | 默认单次 PR 审查；`--follow` 可启用有界、单次续约跟踪 |
 | `rc:read-design` | 读取 Pencil `.pen` 设计稿 |
 | `rc:implement-screen` | 从 Pencil 设计稿实现 iOS/Flutter 页面 |
 | `rc:verify-screen` | 对比设计稿与实现截图 |
@@ -125,6 +125,7 @@ bash scripts/validate-package.sh
 
 - `npx skills add . --list` 能发现全部 Skill
 - 单个复杂 Skill 用 `--copy` 安装后仍带有 bundled resources
+- `rc:review-pr` 生命周期 gate 的终态、重试、并发和等待人工路径通过测试
 - 全量安装到 Codex/Claude Code 目标目录可成功
 - 关键文档不再依赖 `.claude/plugins/cache` 作为唯一路径
 
