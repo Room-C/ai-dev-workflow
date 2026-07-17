@@ -1,5 +1,19 @@
 # Changelog
 
+## 2.7.0 — 2026-07-17
+
+### Removed
+- **rc:read-design / rc:implement-screen / rc:verify-screen**: 移除 Pencil 设计稿转代码链路 — 遥测显示三者始终无使用记录（参见 `docs/workflow-improvement-analysis.md`）。
+- **rc:skill-evolve**: 移除自进化分析技能。
+- **Execution Telemetry**: 移除 `scripts/record-outcome.sh` 及各 Skill 里调用它的步骤（`feature-analyze`、`feature-archive`、`feature-implement`、`diff-review`、`review-pr`），以及 `CLAUDE.md` 中定义该约定的 Execution Telemetry 段落。唯一消费者 `rc:skill-evolve` 已移除，遥测记录不再有用途。
+- 包内 Skill 数量由 13 降至 9；known-issues 注册表不再由 `rc:skill-evolve` 自动维护，改为手动编辑。
+- **skills/shared/**: 移除整个目录 — 其中 `known-issues.md` 与 `compound-schema.md` 两份 master 副本自 `rc:skill-evolve` 移除后已无引用者，内容与各 Skill 的 bundled `references/shared/` 副本逐字节一致，不损失任何信息。bundled 副本现在是唯一事实来源，跨 Skill 同步需手动进行。
+
+### Fixed
+- 同步 legacy 镜像 `agents/workflow/diff-reviewer.md`、`agents/workflow/fix-runner.md` 至 bundled 最新版 — 此前二者停留在旧版本，缺少 Google 审查维度章节和 zsh `echo` 破坏 JSON 的 `printf` 修复。
+- 清理 README / `CLAUDE.md` / `AGENTS.md` 中残留的 Pencil/XcodeBuildMCP/Dart MCP 可选能力描述（仅被已删除的 Design-to-Code 技能使用）。
+- README Skill 清单补上此前遗漏的 `rc-branch-create`。
+
 ## 2.6.0 — 2026-07-13
 
 ### Changed

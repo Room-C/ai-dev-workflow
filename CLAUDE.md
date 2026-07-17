@@ -36,42 +36,10 @@ for root in \
 done
 ```
 
-## Execution Telemetry
-
-Telemetry is best-effort and must never block the user's main task.
-
-Preferred script location:
-
-```bash
-RECORD_SCRIPT="$SKILL_DIR/scripts/record-outcome.sh"
-```
-
-Fallbacks:
-
-```bash
-for candidate in \
-  "$SKILL_DIR/scripts/record-outcome.sh" \
-  "skills/<skill>/scripts/record-outcome.sh" \
-  "skills/shared/scripts/record-outcome.sh" \
-  "dev_workflow/skills/shared/scripts/record-outcome.sh"; do
-  [ -f "$candidate" ] && RECORD_SCRIPT="$candidate" && break
-done
-```
-
-Call only when the script exists:
-
-```bash
-if [ -n "${RECORD_SCRIPT:-}" ] && [ -f "$RECORD_SCRIPT" ]; then
-  bash "$RECORD_SCRIPT" <skill-name> <status> [failure-step] [failure-reason] [fallback-used] || \
-    echo "WARN: telemetry call exited non-zero; record may be incomplete." >&2
-fi
-```
-
 ## Optional Capabilities
 
 - Subagents: use bundled `references/agents/*.md` when available; otherwise run the same workflow inline.
 - Scheduler/Cron: use only when the host exposes it. Without scheduler support, write durable state and tell the user to rerun the Skill.
-- MCP tools: Pencil/Xcode/Dart automation may be used when installed. Without them, request a screenshot, path, or manual setup step rather than failing the whole workflow.
 
 ## Release Validation
 

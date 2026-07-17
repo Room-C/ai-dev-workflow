@@ -15,9 +15,8 @@ model: sonnet
 本 Skill 必须能通过 `npx skills add --copy` 单独安装后运行。运行时资源优先从当前 Skill 目录读取：
 
 - `references/shared/compound-schema.md`
-- `scripts/record-outcome.sh`
 
-项目规则读取顺序为 `AGENTS.md` -> `CLAUDE.md` -> README/Makefile/package 配置。遥测是 best-effort，失败不得阻塞主流程。
+项目规则读取顺序为 `AGENTS.md` -> `CLAUDE.md` -> README/Makefile/package 配置。
 
 ## 工作流程
 
@@ -108,10 +107,6 @@ rm -rf "$FEATURE_DIR/reviews/"
    - [新增] docs/solutions/{category}/{filename}.md — {标题}
    - [跳过] 本次开发未发现需要沉淀的知识
 ```
-
-### Step 7: 记录遥测
-
-优先调用 `scripts/record-outcome.sh` 记录 `feature-archive` 的 success / partial / failed。脚本不存在或执行失败时仅报告，不阻塞归档结果。
 
 ## 原则
 

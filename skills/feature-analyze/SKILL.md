@@ -15,9 +15,8 @@ model: sonnet
 本 Skill 必须能通过 `npx skills add --copy` 单独安装后运行。运行时资源优先从当前 Skill 目录读取：
 
 - `references/shared/known-issues.md`
-- `scripts/record-outcome.sh`
 
-项目规则读取顺序为 `AGENTS.md` -> `CLAUDE.md` -> README/Makefile/package 配置。遥测是 best-effort，失败不得阻塞主流程。
+项目规则读取顺序为 `AGENTS.md` -> `CLAUDE.md` -> README/Makefile/package 配置。
 
 ## 输入形式
 
@@ -209,7 +208,3 @@ tags: [analysis, ...]
 5. **标注不确定性**：任何假设和推断都要显式标注 `[假设]`
 6. **用中文输出**：所有文档内容使用中文
 7. **上下文快照要轻量**：`.context-snapshot.md` 严守 30 行上限，是索引不是副本，为下游 Skill 节省上下文
-
-## 收尾
-
-结束前优先调用 `scripts/record-outcome.sh` 记录遥测；若脚本不存在或执行失败，可跳过但要在输出中明确说明。

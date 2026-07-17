@@ -1,6 +1,6 @@
 # ai-dev-workflow
 
-一套通用 Agent Skills 包，用结构化流程覆盖需求分析、架构设计、实现、代码审查、提交 PR、设计稿转代码和工作流自进化。
+一套通用 Agent Skills 包，用结构化流程覆盖需求分析、架构设计、实现、代码审查和提交 PR。
 
 本仓库可以通过 `npx skills` 安装到 Claude Code、Codex、Cursor 等支持 Skills 的 AI Coding 工具。Claude Code 的插件安装方式仍保留为兼容入口，但主分发路径是标准 Agent Skills。
 
@@ -48,7 +48,7 @@ Claude Code legacy 插件入口仍可使用：
 |------|------|------|
 | Core | Bash、读写文件、grep、git、gh CLI | 所有核心工作流必须可运行 |
 | Agent | 子代理 / task delegation | 可用时委派到 bundled agent prompt；不可用时主上下文 inline 执行 |
-| Optional MCP | Pencil、XcodeBuildMCP、Dart、Cron/scheduler | 可用时启用自动化；不可用时降级为手动截图、手动重跑或报告待办 |
+| Optional | Cron/scheduler、桌面通知 | 可用时启用自动化跟踪与通知；不可用时降级为手动重跑或 stdout |
 
 项目规则读取顺序：
 
@@ -66,12 +66,6 @@ Feature Pipeline:
 
 Quality Gates:
   rc:diff-review -> rc:commit-pr -> rc:review-pr
-
-Design-to-Code:
-  rc:read-design -> rc:implement-screen -> rc:verify-screen
-
-Self-Evolving:
-  rc:skill-evolve
 ```
 
 ## 使用示例
@@ -100,6 +94,7 @@ Codex 或其他 Skills 宿主：
 
 | Skill | 说明 |
 |-------|------|
+| `rc-branch-create` | 在主仓库和所有子模块中创建相同分支 |
 | `rc:feature-analyze` | 将模糊需求转化为 `analysis.md` |
 | `rc:feature-design` | 基于分析文档产出 `design.md`，含多视角审查 |
 | `rc:feature-implement` | 拆解 `tasks.md` 并逐任务实现代码变更 |
@@ -108,10 +103,6 @@ Codex 或其他 Skills 宿主：
 | `rc:commit` | 提交所有变更并推送当前分支 |
 | `rc:commit-pr` | 提交、推送并创建或复用 PR |
 | `rc:review-pr` | 默认单次 PR 审查；`--follow` 可启用有界、单次续约跟踪 |
-| `rc:read-design` | 读取 Pencil `.pen` 设计稿 |
-| `rc:implement-screen` | 从 Pencil 设计稿实现 iOS/Flutter 页面 |
-| `rc:verify-screen` | 对比设计稿与实现截图 |
-| `rc:skill-evolve` | 分析遥测并提出工作流改进 |
 
 ## 发布前验证
 
