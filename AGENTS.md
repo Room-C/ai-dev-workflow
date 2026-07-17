@@ -8,7 +8,7 @@
 - 根目录 `agents/` 仅作为 Claude Code plugin legacy 入口和开发源文件保留；通用安装不能依赖它存在。
 - 不要把 `$HOME/.claude/plugins/cache`、`$HOME/.codex` 或仓库绝对路径作为唯一运行路径。允许作为 legacy fallback，但优先使用当前 Skill 目录内资源。
 - 宿主项目规则读取顺序为 `AGENTS.md` -> `CLAUDE.md` -> README/Makefile/package 配置。
-- 子代理、Cron、MCP 工具都是可选能力。Skill 必须说明不可用时的 inline/manual fallback。
+- 子代理、Cron 等宿主能力都是可选的。Skill 必须说明不可用时的 inline/manual fallback。
 
 ## Design Agents
 

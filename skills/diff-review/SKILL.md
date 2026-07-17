@@ -23,7 +23,6 @@ model: sonnet
 
 - `scripts/preprocess-diff.sh`
 - `scripts/baseline-verify.sh`
-- `scripts/record-outcome.sh`
 - `references/agents/diff-reviewer.md`
 - `references/agents/validation-reviewer.md`
 - `references/agents/fix-runner.md`
@@ -284,19 +283,6 @@ rm -rf "$ROUNDS_DIR"
 - 任务清单文件（如有）
 - `docs/solutions/` 下的 solution docs
 - 已修复的 commits
-
-### Step 9: 遥测
-
-流程结束时（任意结束条件），优先调用当前 Skill 目录下的 `scripts/record-outcome.sh`：
-
-| 场景 | status | fallback_used |
-|------|--------|---------------|
-| 全部轮次宿主 review/CLI 成功且所有 P1/P2 解决 | `success` | - |
-| 任意轮次走到 `agent-fallback` 且最终完成 | `partial` | `agent-fallback` |
-| 任意轮次走到 `native-inline` 且最终完成 | `partial` | `native-inline` |
-| 达 5 轮上限仍有未解决 P1/P2 | `partial` | `round-limit` |
-| 死锁终止（4.5 条件 4） | `partial` | `deadlock` |
-| 全部引擎失败（`engine = failed`） | `failed` | - |
 
 ## 核心约束
 

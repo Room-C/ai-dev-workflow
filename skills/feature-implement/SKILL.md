@@ -17,7 +17,6 @@ model: sonnet
 - `references/agents/decomposer.md`
 - `references/agents/task-runner.md`
 - `references/shared/known-issues.md`
-- `scripts/record-outcome.sh`
 
 宿主支持子代理时，按 bundled agent prompt 委派；没有子代理能力时，主上下文按 reference inline 执行。项目规则读取顺序为 `AGENTS.md` -> `CLAUDE.md` -> README/Makefile/package 配置。
 
@@ -203,10 +202,6 @@ rm -rf "$FEATURE_DIR/reviews/"
    - 运行 rc:feature-archive {module} --version {version} 归档关键决策和经验教训
      如本次实现位于 side 子目录，再补上对应的 `--side <side>`
 ```
-
-### Step 3.4: 执行遥测
-
-优先调用 `scripts/record-outcome.sh` 记录遥测（status: success / partial / failed）。脚本不存在则跳过，遥测失败不得阻塞主流程。
 
 ---
 

@@ -18,7 +18,7 @@ metadata:
 
 立即执行一次审查。默认完成本次审查后结束；只有用户显式传入 `--follow` 时，才尝试创建**有界、单次唤醒**的后续检查。不要创建永久轮询任务，也不要让运行中的调度任务删除自身。
 
-具体审查逻辑放在 bundled `references/agents/pr-reviewer.md`。本文件只负责编排：环境预检、参数和 PR 解析、确定性 gate、调用 reviewer、状态迁移、可选续约和遥测。
+具体审查逻辑放在 bundled `references/agents/pr-reviewer.md`。本文件只负责编排：环境预检、参数和 PR 解析、确定性 gate、调用 reviewer、状态迁移、可选续约。
 
 ## Portable Runtime
 
@@ -28,7 +28,6 @@ metadata:
 - `scripts/review-pr-gate.sh`：终态、事件、TTL、tick、退避和并发锁
 - `scripts/pr-diff-filter.sh`：diff 噪音过滤
 - `scripts/notify.sh`：跨平台通知
-- `scripts/record-outcome.sh`：best-effort 遥测
 
 能力降级：
 
@@ -278,19 +277,6 @@ future wake 的 prompt 必须先运行 gate，且不要先读取 reviewer：
 当前宿主没有可安全续约的一次性 scheduler。已保留跟踪状态：<STATE_FILE>
 出现新 commit、CI 结果或评论后请手动重跑：rc:review-pr <N>
 ```
-
-## Step 5: 遥测
-
-任意结束点 best-effort 调用 bundled `scripts/record-outcome.sh`。失败只警告，不覆盖主结果。
-
-| 场景 | status | fallback |
-|---|---|---|
-| CLEAN / DONE / TERMINAL(completed) | `success` | - |
-| FIXED / WAITING_HUMAN | `partial` | - |
-| OFFLINE | `partial` | `gh-offline` |
-| 无安全 scheduler | `partial` | `manual-rerun` |
-| 无 Agent 工具 | 继承主状态 | `native-inline` |
-| RETRY / API 失败 | `failed` | - |
 
 ## 边界
 
