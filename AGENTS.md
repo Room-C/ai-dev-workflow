@@ -7,7 +7,7 @@
 - 每个可安装 Skill 必须自包含。`SKILL.md` 需要的脚本、agent prompt、共享 schema 应放在该 Skill 目录下的 `scripts/`、`references/agents/` 或 `references/shared/`。
 - 根目录 `agents/` 仅作为 Claude Code plugin legacy 入口和开发源文件保留；通用安装不能依赖它存在。
 - 不要把 `$HOME/.claude/plugins/cache`、`$HOME/.codex` 或仓库绝对路径作为唯一运行路径。允许作为 legacy fallback，但优先使用当前 Skill 目录内资源。
-- 宿主项目规则读取顺序为 `AGENTS.md` -> `CLAUDE.md` -> README/Makefile/package 配置。
+- 宿主项目规则读取顺序为 `AGENTS.md` -> `CLAUDE.md` -> README/Makefile/package 配置。这些文件只是使用者项目的上下文来源，不得当作本包的运行时依赖。
 - 子代理、Cron 等宿主能力都是可选的。Skill 必须说明不可用时的 inline/manual fallback。
 
 ## Design Agents
